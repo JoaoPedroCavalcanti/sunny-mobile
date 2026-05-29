@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppScreen } from '../components/AppScreen';
 import { AppCard } from '../components/AppCard';
-import { AppInput } from '../components/AppInput';
-import { AppButton } from '../components/AppButton';
 import {
-  createBbqReservation,
-  createHallReservation,
   deleteBbqReservation,
   deleteHallReservation,
   listBbqReservations,
@@ -16,17 +15,20 @@ import {
 import type { Reservation } from '../types/domain';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
+import type { MainTabParamList, RootStackParamList } from '../navigation/types';
 
 type ReservationTab = 'bbq' | 'hall';
 
+type ReservationsNav = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Reservas'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
+
 export function ReservationsScreen() {
+  const navigation = useNavigation<ReservationsNav>();
   const [tab, setTab] = useState<ReservationTab>('bbq');
   const [list, setList] = useState<Reservation[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [showComposer, setShowComposer] = useState(false);
-  const [date, setDate] = useState('');
-  const [guestCount, setGuestCount] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
@@ -42,29 +44,8 @@ export function ReservationsScreen() {
     loadData();
   }, [loadData]);
 
-  async function createReservation() {
-    try {
-      setLoading(true);
-      const payload = {
-        reservation_date: date,
-        guest_count: guestCount ? Number(guestCount) : undefined
-      };
-
-      if (tab === 'bbq') {
-        await createBbqReservation(payload);
-      } else {
-        await createHallReservation(payload);
-      }
-
-      setDate('');
-      setGuestCount('');
-      setShowComposer(false);
-      await loadData();
-    } catch (error) {
-      Alert.alert('Falha ao reservar', extractErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
+  function openNewReservation() {
+    navigation.navigate('NewReservation', { space: tab });
   }
 
   async function removeReservation(id: number) {
@@ -111,7 +92,7 @@ export function ReservationsScreen() {
           <Text style={styles.title}>Reservas</Text>
           <Text style={styles.subtitle}>Confira suas reservas.</Text>
         </View>
-        <Pressable style={styles.calendarButton} onPress={() => setShowComposer((v) => !v)}>
+        <Pressable style={styles.calendarButton} onPress={openNewReservation}>
           <Ionicons name="calendar-outline" size={20} color={colors.primary} />
         </Pressable>
       </View>
@@ -145,52 +126,12 @@ export function ReservationsScreen() {
         </Pressable>
       </View>
 
-      {!showComposer ? (
-        <Pressable style={styles.newReservationCta} onPress={() => setShowComposer(true)}>
-          <View style={styles.newReservationIcon}>
-            <Ionicons name="add" size={18} color="#FFFFFF" />
-          </View>
-          <Text style={styles.newReservationText}>Fazer nova reserva</Text>
-        </Pressable>
-      ) : null}
-
-      {showComposer ? (
-        <AppCard>
-          <Text style={styles.composerTitle}>Nova reserva</Text>
-          <View style={styles.composerRow}>
-            <View style={styles.flex}>
-              <AppInput
-                label="Data e hora"
-                value={date}
-                onChangeText={setDate}
-                placeholder="2026-06-20T18:00:00"
-              />
-            </View>
-            <View style={styles.composerSmall}>
-              <AppInput
-                label="Pessoas"
-                value={guestCount}
-                onChangeText={setGuestCount}
-                keyboardType="number-pad"
-              />
-            </View>
-          </View>
-          <View style={styles.composerActions}>
-            <AppButton
-              title="Cancelar"
-              onPress={() => setShowComposer(false)}
-              variant="ghost"
-              style={styles.composerAction}
-            />
-            <AppButton
-              title="Salvar"
-              onPress={createReservation}
-              loading={loading}
-              style={styles.composerAction}
-            />
-          </View>
-        </AppCard>
-      ) : null}
+      <Pressable style={styles.newReservationCta} onPress={openNewReservation}>
+        <View style={styles.newReservationIcon}>
+          <Ionicons name="add" size={18} color="#FFFFFF" />
+        </View>
+        <Text style={styles.newReservationText}>Fazer nova reserva</Text>
+      </Pressable>
 
       <Text style={styles.sectionTitle}>Proximas reservas</Text>
 
@@ -218,7 +159,7 @@ export function ReservationsScreen() {
           </View>
           <Text style={styles.emptyTitle}>Voce nao tem reservas</Text>
           <Text style={styles.emptySubtitle}>Que tal fazer uma reserva?</Text>
-          <Pressable style={styles.primaryCta} onPress={() => setShowComposer(true)}>
+          <Pressable style={styles.primaryCta} onPress={openNewReservation}>
             <Text style={styles.primaryCtaText}>Fazer reserva</Text>
           </Pressable>
         </View>
@@ -483,30 +424,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700'
-  },
-  composerTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 10
-  },
-  composerRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12
-  },
-  composerActions: {
-    flexDirection: 'row',
-    gap: 10
-  },
-  composerAction: {
-    flex: 1
-  },
-  flex: {
-    flex: 1
-  },
-  composerSmall: {
-    width: 100
   },
   sectionTitle: {
     color: colors.textPrimary,

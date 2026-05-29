@@ -3,6 +3,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   VisitorCheckin: undefined;
   ServiceRequests: undefined;
+  NewReservation: { space?: 'bbq' | 'hall' } | undefined;
 };
 
 export type MainTabParamList = {
