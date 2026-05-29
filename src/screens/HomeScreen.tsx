@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
   },
   quickText: {
     color: colors.textPrimary,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     marginTop: 34,
     maxWidth: '72%'
