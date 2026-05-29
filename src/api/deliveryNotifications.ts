@@ -1,4 +1,5 @@
 import { api } from '@/api/client';
+import { normalizeListResponse } from '@/api/listResponse';
 import type { DeliveryNotification } from '@/types/domain';
 
 export async function sendDeliveryNotification(
@@ -9,8 +10,8 @@ export async function sendDeliveryNotification(
 }
 
 export async function listDeliveryNotifications() {
-  const { data } = await api.get<DeliveryNotification[]>('/delivery_notification/list/');
-  return data;
+  const { data } = await api.get<DeliveryNotification[] | { results?: DeliveryNotification[] }>('/delivery_notification/list/');
+  return normalizeListResponse(data);
 }
 
 export async function getDeliveryNotification(id: number) {

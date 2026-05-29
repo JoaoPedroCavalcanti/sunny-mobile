@@ -1,9 +1,10 @@
 import { api } from '@/api/client';
+import { normalizeListResponse } from '@/api/listResponse';
 import type { ServiceRequest } from '@/types/domain';
 
 export async function listServiceRequests() {
-  const { data } = await api.get<ServiceRequest[]>('/service_requests/');
-  return data;
+  const { data } = await api.get<ServiceRequest[] | { results?: ServiceRequest[] }>('/service_requests/');
+  return normalizeListResponse(data);
 }
 
 export async function getServiceRequest(id: number) {

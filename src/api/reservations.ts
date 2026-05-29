@@ -1,9 +1,10 @@
 import { api } from '@/api/client';
+import { normalizeListResponse } from '@/api/listResponse';
 import type { Reservation } from '@/types/domain';
 
 export async function listBbqReservations() {
-  const { data } = await api.get<Reservation[]>('/bbq/');
-  return data;
+  const { data } = await api.get<Reservation[] | { results?: Reservation[] }>('/bbq/');
+  return normalizeListResponse(data);
 }
 
 export async function createBbqReservation(payload: {
@@ -24,8 +25,8 @@ export async function deleteBbqReservation(id: number) {
 }
 
 export async function listHallReservations() {
-  const { data } = await api.get<Reservation[]>('/hall/');
-  return data;
+  const { data } = await api.get<Reservation[] | { results?: Reservation[] }>('/hall/');
+  return normalizeListResponse(data);
 }
 
 export async function createHallReservation(payload: {

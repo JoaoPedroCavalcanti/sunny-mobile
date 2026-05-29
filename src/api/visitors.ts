@@ -1,9 +1,10 @@
 import { api } from '@/api/client';
+import { normalizeListResponse } from '@/api/listResponse';
 import type { VisitorAccess } from '@/types/domain';
 
 export async function listVisitors() {
-  const { data } = await api.get<VisitorAccess[]>('/visitor_access/');
-  return data;
+  const { data } = await api.get<VisitorAccess[] | { results?: VisitorAccess[] }>('/visitor_access/');
+  return normalizeListResponse(data);
 }
 
 export async function createVisitor(payload: {

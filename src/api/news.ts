@@ -1,9 +1,10 @@
 import { api } from '@/api/client';
+import { normalizeListResponse } from '@/api/listResponse';
 import type { News } from '@/types/domain';
 
 export async function listNews() {
-  const { data } = await api.get<News[]>('/sunny_vale_news/');
-  return data;
+  const { data } = await api.get<News[] | { results?: News[] }>('/sunny_vale_news/');
+  return normalizeListResponse(data);
 }
 
 export async function createNews(payload: Omit<News, 'id' | 'created_at' | 'updated_at'>) {

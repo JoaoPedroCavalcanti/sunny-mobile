@@ -1,9 +1,10 @@
 import { api } from '@/api/client';
+import { normalizeListResponse } from '@/api/listResponse';
 import type { CondoPayment } from '@/types/domain';
 
 export async function listCondoPayments() {
-  const { data } = await api.get<CondoPayment[]>('/condo_payments/');
-  return data;
+  const { data } = await api.get<CondoPayment[] | { results?: CondoPayment[] }>('/condo_payments/');
+  return normalizeListResponse(data);
 }
 
 export async function createCondoPayment(payload: Omit<CondoPayment, 'id' | 'created_at' | 'updated_at'>) {
