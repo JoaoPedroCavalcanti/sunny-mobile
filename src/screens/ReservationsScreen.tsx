@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { AppScreen } from '../components/AppScreen';
-import { SectionHeader } from '../components/SectionHeader';
 import { AppCard } from '../components/AppCard';
 import { AppInput } from '../components/AppInput';
 import { AppButton } from '../components/AppButton';
@@ -11,19 +11,19 @@ import {
   deleteBbqReservation,
   deleteHallReservation,
   listBbqReservations,
-  listHallReservations,
-  patchBbqReservation,
-  patchHallReservation
+  listHallReservations
 } from '../api/reservations';
 import type { Reservation } from '../types/domain';
-import { formatDate } from '../utils/date';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
 
+type ReservationTab = 'bbq' | 'hall';
+
 export function ReservationsScreen() {
-  const [tab, setTab] = useState<'bbq' | 'hall'>('bbq');
+  const [tab, setTab] = useState<ReservationTab>('bbq');
   const [list, setList] = useState<Reservation[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [showComposer, setShowComposer] = useState(false);
   const [date, setDate] = useState('');
   const [guestCount, setGuestCount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,13 +49,16 @@ export function ReservationsScreen() {
         reservation_date: date,
         guest_count: guestCount ? Number(guestCount) : undefined
       };
+
       if (tab === 'bbq') {
         await createBbqReservation(payload);
       } else {
         await createHallReservation(payload);
       }
+
       setDate('');
       setGuestCount('');
+      setShowComposer(false);
       await loadData();
     } catch (error) {
       Alert.alert('Falha ao reservar', extractErrorMessage(error));
@@ -66,113 +69,640 @@ export function ReservationsScreen() {
 
   async function removeReservation(id: number) {
     try {
-      if (tab === 'bbq') await deleteBbqReservation(id);
-      else await deleteHallReservation(id);
+      if (tab === 'bbq') {
+        await deleteBbqReservation(id);
+      } else {
+        await deleteHallReservation(id);
+      }
       await loadData();
     } catch (error) {
       Alert.alert('Falha ao excluir', extractErrorMessage(error));
     }
   }
 
-  async function increaseGuests(item: Reservation) {
-    try {
-      const next = (item.guest_count || 0) + 1;
-      if (tab === 'bbq') await patchBbqReservation(item.id, { guest_count: next });
-      else await patchHallReservation(item.id, { guest_count: next });
-      await loadData();
-    } catch (error) {
-      Alert.alert('Falha ao atualizar', extractErrorMessage(error));
-    }
-  }
+  const sortedReservations = useMemo(
+    () =>
+      [...list].sort(
+        (a, b) =>
+          new Date(a.reservation_date).getTime() - new Date(b.reservation_date).getTime()
+      ),
+    [list]
+  );
 
-  const tabText = useMemo(() => (tab === 'bbq' ? 'churrasqueira' : 'salao de festas'), [tab]);
+  const now = Date.now();
+
+  const upcomingReservations = sortedReservations.filter(
+    (item) => new Date(item.reservation_date).getTime() >= now
+  );
+
+  const pastReservations = [...sortedReservations]
+    .filter((item) => new Date(item.reservation_date).getTime() < now)
+    .reverse();
+
+  const rulesText =
+    tab === 'bbq'
+      ? 'Consulte as regras para uso da churrasqueira.'
+      : 'Consulte as regras para uso do salao de festas.';
 
   return (
     <AppScreen onRefresh={loadData} refreshing={refreshing}>
-      <SectionHeader title="Reservas" subtitle="Gerencie reservas de churrasqueira e salao" />
-
-      <View style={styles.toggleRow}>
-        <Pressable style={[styles.tabBtn, tab === 'bbq' && styles.tabBtnActive]} onPress={() => setTab('bbq')}>
-          <Text style={[styles.tabText, tab === 'bbq' && styles.tabTextActive]}>Churrasqueira</Text>
-        </Pressable>
-        <Pressable style={[styles.tabBtn, tab === 'hall' && styles.tabBtnActive]} onPress={() => setTab('hall')}>
-          <Text style={[styles.tabText, tab === 'hall' && styles.tabTextActive]}>Salao</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.headerCopy}>
+          <Text style={styles.title}>Reservas</Text>
+          <Text style={styles.subtitle}>Confira suas reservas.</Text>
+        </View>
+        <Pressable style={styles.calendarButton} onPress={() => setShowComposer((v) => !v)}>
+          <Ionicons name="calendar-outline" size={20} color={colors.primary} />
         </Pressable>
       </View>
 
-      <AppCard>
-        <Text style={styles.blockTitle}>Nova reserva - {tabText}</Text>
-        <View style={styles.formRow}>
-          <View style={styles.flex}><AppInput label="Data (AAAA-MM-DD)" value={date} onChangeText={setDate} /></View>
-          <View style={styles.small}><AppInput label="Convidados" value={guestCount} onChangeText={setGuestCount} keyboardType="number-pad" /></View>
-        </View>
-        <AppButton title="Reservar" onPress={createReservation} loading={loading} />
-      </AppCard>
+      <View style={styles.segmented}>
+        <Pressable
+          style={[styles.segmentButton, tab === 'bbq' && styles.segmentButtonActive]}
+          onPress={() => setTab('bbq')}
+        >
+          <Ionicons
+            name="flame-outline"
+            size={16}
+            color={tab === 'bbq' ? colors.primary : '#8D93A1'}
+          />
+          <Text style={[styles.segmentText, tab === 'bbq' && styles.segmentTextActive]}>
+            Churrasqueira
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.segmentButton, tab === 'hall' && styles.segmentButtonActive]}
+          onPress={() => setTab('hall')}
+        >
+          <Ionicons
+            name="business-outline"
+            size={16}
+            color={tab === 'hall' ? colors.primary : '#8D93A1'}
+          />
+          <Text style={[styles.segmentText, tab === 'hall' && styles.segmentTextActive]}>
+            Salao de festas
+          </Text>
+        </Pressable>
+      </View>
 
-      {list.map((item) => (
-        <AppCard key={item.id}>
-          <Text style={styles.itemTitle}>#{item.id} - {formatDate(item.reservation_date)}</Text>
-          <Text style={styles.itemSub}>Convidados: {item.guest_count ?? 0}</Text>
-          <View style={styles.actions}>
-            <AppButton title="+ convidado" variant="ghost" onPress={() => increaseGuests(item)} style={styles.actionBtn} />
-            <AppButton title="Excluir" variant="danger" onPress={() => removeReservation(item.id)} style={styles.actionBtn} />
+      {!showComposer ? (
+        <Pressable style={styles.newReservationCta} onPress={() => setShowComposer(true)}>
+          <View style={styles.newReservationIcon}>
+            <Ionicons name="add" size={18} color="#FFFFFF" />
+          </View>
+          <Text style={styles.newReservationText}>Fazer nova reserva</Text>
+        </Pressable>
+      ) : null}
+
+      {showComposer ? (
+        <AppCard>
+          <Text style={styles.composerTitle}>Nova reserva</Text>
+          <View style={styles.composerRow}>
+            <View style={styles.flex}>
+              <AppInput
+                label="Data e hora"
+                value={date}
+                onChangeText={setDate}
+                placeholder="2026-06-20T18:00:00"
+              />
+            </View>
+            <View style={styles.composerSmall}>
+              <AppInput
+                label="Pessoas"
+                value={guestCount}
+                onChangeText={setGuestCount}
+                keyboardType="number-pad"
+              />
+            </View>
+          </View>
+          <View style={styles.composerActions}>
+            <AppButton
+              title="Cancelar"
+              onPress={() => setShowComposer(false)}
+              variant="ghost"
+              style={styles.composerAction}
+            />
+            <AppButton
+              title="Salvar"
+              onPress={createReservation}
+              loading={loading}
+              style={styles.composerAction}
+            />
           </View>
         </AppCard>
-      ))}
+      ) : null}
+
+      <Text style={styles.sectionTitle}>Proximas reservas</Text>
+
+      {upcomingReservations.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <View style={styles.emptyIllustration}>
+            <Ionicons
+              name="leaf"
+              size={20}
+              color="#D8ECDB"
+              style={styles.emptyLeafLeft}
+            />
+            <View style={styles.emptyCalendar}>
+              <Ionicons name="calendar-clear-outline" size={42} color="#B7D5BC" />
+              <View style={styles.emptyCheck}>
+                <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+              </View>
+            </View>
+            <Ionicons
+              name="leaf"
+              size={20}
+              color="#D8ECDB"
+              style={styles.emptyLeafRight}
+            />
+          </View>
+          <Text style={styles.emptyTitle}>Voce nao tem reservas</Text>
+          <Text style={styles.emptySubtitle}>Que tal fazer uma reserva?</Text>
+          <Pressable style={styles.primaryCta} onPress={() => setShowComposer(true)}>
+            <Text style={styles.primaryCtaText}>Fazer reserva</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.listWrap}>
+          {upcomingReservations.map((item) => (
+            <ReservationRow
+              key={`upcoming-${item.id}`}
+              item={item}
+              statusLabel="Agendada"
+              statusStyle={styles.statusUpcoming}
+              iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
+              onPress={() =>
+                Alert.alert(
+                  'Reserva',
+                  `Reserva para ${formatReservationFullDate(item.reservation_date)}`
+                )
+              }
+              onDelete={() => removeReservation(item.id)}
+            />
+          ))}
+        </View>
+      )}
+
+      <Text style={styles.sectionTitle}>Reservas anteriores</Text>
+
+      {pastReservations.length > 0 ? (
+        <View style={styles.listWrap}>
+          {pastReservations.map((item) => (
+            <ReservationRow
+              key={`past-${item.id}`}
+              item={item}
+              statusLabel="Concluida"
+              statusStyle={styles.statusCompleted}
+              iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
+              onPress={() =>
+                Alert.alert(
+                  'Reserva anterior',
+                  `Reserva realizada em ${formatReservationFullDate(item.reservation_date)}`
+                )
+              }
+            />
+          ))}
+        </View>
+      ) : (
+        <AppCard>
+          <Text style={styles.helperText}>Nenhuma reserva anterior encontrada.</Text>
+        </AppCard>
+      )}
+
+      <Pressable
+        style={styles.rulesCard}
+        onPress={() => Alert.alert('Regras de utilizacao', rulesText)}
+      >
+        <View style={styles.rulesIconWrap}>
+          <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+        </View>
+        <View style={styles.rulesCopy}>
+          <Text style={styles.rulesTitle}>Regras de utilizacao</Text>
+          <Text style={styles.rulesBody}>{rulesText}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
+      </Pressable>
     </AppScreen>
   );
 }
 
+type ReservationRowProps = {
+  item: Reservation;
+  statusLabel: string;
+  statusStyle: object;
+  iconName: React.ComponentProps<typeof Ionicons>['name'];
+  onPress: () => void;
+  onDelete?: () => void;
+};
+
+function ReservationRow({
+  item,
+  statusLabel,
+  statusStyle,
+  iconName,
+  onPress,
+  onDelete
+}: ReservationRowProps) {
+  return (
+    <Pressable style={styles.reservationRow} onPress={onPress}>
+      <View style={styles.rowIconWrap}>
+        <Ionicons name={iconName} size={22} color={colors.primary} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text style={styles.rowTitle}>{formatReservationHeadline(item.reservation_date)}</Text>
+        <View style={styles.metaRow}>
+          <Ionicons name="time-outline" size={13} color="#8D93A1" />
+          <Text style={styles.metaText}>{formatReservationSlot(item.reservation_date)}</Text>
+        </View>
+        <View style={styles.metaRow}>
+          <Ionicons name="people-outline" size={13} color="#8D93A1" />
+          <Text style={styles.metaText}>
+            {item.guest_count ?? 0} {(item.guest_count ?? 0) === 1 ? 'pessoa' : 'pessoas'}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.rowSide}>
+        <View style={[styles.statusChip, statusStyle]}>
+          <Text style={[styles.statusText, statusStyle === styles.statusCompleted && styles.statusTextCompleted]}>
+            {statusLabel}
+          </Text>
+        </View>
+        <Pressable
+          style={styles.chevronButton}
+          onPress={onDelete ?? onPress}
+          hitSlop={8}
+        >
+          <Ionicons
+            name={onDelete ? 'trash-outline' : 'chevron-forward'}
+            size={16}
+            color={colors.textPrimary}
+          />
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}
+
+function formatReservationHeadline(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long'
+  })
+    .format(date)
+    .replace(/^\w/, (char) => char.toUpperCase());
+}
+
+function formatReservationFullDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function formatReservationSlot(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Horario a confirmar';
+  }
+
+  const start = new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+
+  const endDate = new Date(date.getTime() + 4 * 60 * 60 * 1000);
+  const end = new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(endDate);
+
+  return `${start} - ${end}`;
+}
+
 const styles = StyleSheet.create({
-  toggleRow: {
-    backgroundColor: '#EAF0EC',
-    borderRadius: 12,
+  headerRow: {
     flexDirection: 'row',
-    padding: 4
-  },
-  tabBtn: {
-    flex: 1,
-    borderRadius: 9,
-    paddingVertical: 10,
-    alignItems: 'center'
-  },
-  tabBtnActive: {
-    backgroundColor: '#FFFFFF'
-  },
-  tabText: {
-    color: colors.textMuted,
-    fontWeight: '600'
-  },
-  tabTextActive: {
-    color: colors.primary
-  },
-  blockTitle: {
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 12
-  },
-  formRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12
-  },
-  flex: { flex: 1 },
-  small: { width: 110 },
-  itemTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  itemSub: {
-    color: colors.textMuted,
-    marginVertical: 6
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 4
   },
-  actionBtn: {
+  headerCopy: {
+    gap: 4
+  },
+  title: {
+    color: colors.textPrimary,
+    fontSize: 26,
+    fontWeight: '800'
+  },
+  subtitle: {
+    color: colors.textMuted,
+    fontSize: 14
+  },
+  calendarButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#132016',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4
+  },
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    padding: 4,
+    shadowColor: '#132016',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3
+  },
+  segmentButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8
+  },
+  segmentButtonActive: {
+    backgroundColor: '#F4F8F4'
+  },
+  segmentText: {
+    color: '#7C8392',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  segmentTextActive: {
+    color: colors.primary,
+    fontWeight: '700'
+  },
+  newReservationCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: colors.primaryDark,
+    shadowColor: colors.primaryDark,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5
+  },
+  newReservationIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  newReservationText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700'
+  },
+  composerTitle: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 10
+  },
+  composerRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12
+  },
+  composerActions: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  composerAction: {
     flex: 1
+  },
+  flex: {
+    flex: 1
+  },
+  composerSmall: {
+    width: 100
+  },
+  sectionTitle: {
+    color: colors.textPrimary,
+    fontSize: 17,
+    fontWeight: '800',
+    marginTop: 6
+  },
+  emptyCard: {
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    alignItems: 'center',
+    shadowColor: '#132016',
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3
+  },
+  emptyIllustration: {
+    width: 150,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6
+  },
+  emptyCalendar: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: '#F2F7F2',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  emptyCheck: {
+    position: 'absolute',
+    right: -6,
+    bottom: -6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF'
+  },
+  emptyLeafLeft: {
+    position: 'absolute',
+    left: 8,
+    top: 30,
+    transform: [{ rotate: '-25deg' }]
+  },
+  emptyLeafRight: {
+    position: 'absolute',
+    right: 8,
+    top: 30,
+    transform: [{ rotate: '25deg' }, { scaleX: -1 }]
+  },
+  emptyTitle: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 6
+  },
+  emptySubtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 4,
+    marginBottom: 18
+  },
+  primaryCta: {
+    alignSelf: 'stretch',
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  primaryCtaText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700'
+  },
+  listWrap: {
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+    shadowColor: '#132016',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3
+  },
+  reservationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EFF2F0'
+  },
+  rowIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#F2F7F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12
+  },
+  rowCopy: {
+    flex: 1,
+    gap: 2
+  },
+  rowTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  metaText: {
+    color: colors.textMuted,
+    fontSize: 12
+  },
+  rowSide: {
+    alignItems: 'flex-end',
+    gap: 10,
+    marginLeft: 8
+  },
+  statusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10
+  },
+  statusUpcoming: {
+    backgroundColor: '#E8F6EC'
+  },
+  statusCompleted: {
+    backgroundColor: '#F1F7F1'
+  },
+  statusText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  statusTextCompleted: {
+    color: colors.primaryDark
+  },
+  chevronButton: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  helperText: {
+    color: colors.textMuted,
+    fontSize: 13
+  },
+  rulesCard: {
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#132016',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3
+  },
+  rulesIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#F2F7F2',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  rulesCopy: {
+    flex: 1,
+    gap: 2
+  },
+  rulesTitle: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  rulesBody: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18
   }
 });
