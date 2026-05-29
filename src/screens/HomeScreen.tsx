@@ -1,5 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  FlatList,
+  ImageBackground,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +39,40 @@ type Dashboard = {
   pendingPayments: number;
 };
 
+type HeroSlide = {
+  key: string;
+  image: ReturnType<typeof require>;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  text: string;
+};
+
+const HERO_SLIDES: HeroSlide[] = [
+  {
+    key: 'welcome',
+    image: require('../../assets/login-bg.png'),
+    icon: 'leaf-outline',
+    title: 'Bem-vinda ao\nSunnyvale Connect',
+    text: 'Tudo do seu condominio,\nna palma da sua mao.'
+  },
+  {
+    key: 'reservas',
+    image: require('../../assets/hero-reservas.png'),
+    icon: 'calendar-outline',
+    title: 'Reserve areas\ncomuns em segundos',
+    text: 'Churrasqueira, salao e mais\nsem precisar ligar na portaria.'
+  },
+  {
+    key: 'avisos',
+    image: require('../../assets/hero-avisos.png'),
+    icon: 'notifications-outline',
+    title: 'Fique por dentro\ndo condominio',
+    text: 'Comunicados, financeiro e\nvisitantes em um so lugar.'
+  }
+];
+
+const HERO_AUTOPLAY_MS = 5000;
+
 export function HomeScreen() {
   const navigation = useNavigation<HomeNav>();
   const user = useAuthStore((state) => state.user);
@@ -39,6 +83,36 @@ export function HomeScreen() {
     openRequests: 0,
     pendingPayments: 0
   });
+
+  const heroListRef = useRef<FlatList<HeroSlide>>(null);
+  const [heroWidth, setHeroWidth] = useState(0);
+  const [heroIndex, setHeroIndex] = useState(0);
+
+  const handleHeroLayout = useCallback((event: LayoutChangeEvent) => {
+    setHeroWidth(event.nativeEvent.layout.width);
+  }, []);
+
+  const handleHeroScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!heroWidth) return;
+      const offsetX = event.nativeEvent.contentOffset.x;
+      const next = Math.round(offsetX / heroWidth);
+      setHeroIndex(Math.max(0, Math.min(HERO_SLIDES.length - 1, next)));
+    },
+    [heroWidth]
+  );
+
+  useEffect(() => {
+    if (!heroWidth) return;
+    const id = setInterval(() => {
+      setHeroIndex((current) => {
+        const next = (current + 1) % HERO_SLIDES.length;
+        heroListRef.current?.scrollToOffset({ offset: next * heroWidth, animated: true });
+        return next;
+      });
+    }, HERO_AUTOPLAY_MS);
+    return () => clearInterval(id);
+  }, [heroWidth]);
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
@@ -112,31 +186,49 @@ export function HomeScreen() {
         </Pressable>
       </View>
 
-      <ImageBackground
-        source={require('../../assets/login-bg.png')}
-        resizeMode="cover"
-        imageStyle={styles.heroImage}
-        style={styles.heroCard}
-      >
-        <LinearGradient
-          colors={['rgba(21, 29, 22, 0.78)', 'rgba(21, 29, 22, 0.44)', 'rgba(21, 29, 22, 0.12)']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={styles.heroOverlay}
-        >
-          <View style={styles.heroIconWrap}>
-            <Ionicons name="leaf-outline" size={36} color="#9CC85F" />
-          </View>
-          <Text style={styles.heroTitle}>Bem-vinda ao{'\n'}Sunnyvale Connect</Text>
-          <Text style={styles.heroText}>Tudo do seu condominio, {'\n'}na palma da sua mao.</Text>
+      <View style={styles.heroCarousel} onLayout={handleHeroLayout}>
+        {heroWidth > 0 && (
+          <FlatList
+            ref={heroListRef}
+            data={HERO_SLIDES}
+            keyExtractor={(item) => item.key}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={handleHeroScroll}
+            renderItem={({ item }) => (
+              <ImageBackground
+                source={item.image}
+                resizeMode="cover"
+                imageStyle={styles.heroImage}
+                style={[styles.heroCard, { width: heroWidth }]}
+              >
+                <LinearGradient
+                  colors={['rgba(21, 29, 22, 0.78)', 'rgba(21, 29, 22, 0.44)', 'rgba(21, 29, 22, 0.12)']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.heroOverlay}
+                >
+                  <View style={styles.heroIconWrap}>
+                    <Ionicons name={item.icon} size={36} color="#9CC85F" />
+                  </View>
+                  <Text style={styles.heroTitle}>{item.title}</Text>
+                  <Text style={styles.heroText}>{item.text}</Text>
+                </LinearGradient>
+              </ImageBackground>
+            )}
+          />
+        )}
 
-          <View style={styles.heroDots}>
-            <View style={[styles.heroDot, styles.heroDotActive]} />
-            <View style={styles.heroDot} />
-            <View style={styles.heroDot} />
-          </View>
-        </LinearGradient>
-      </ImageBackground>
+        <View style={styles.heroDots} pointerEvents="none">
+          {HERO_SLIDES.map((slide, index) => (
+            <View
+              key={slide.key}
+              style={[styles.heroDot, index === heroIndex && styles.heroDotActive]}
+            />
+          ))}
+        </View>
+      </View>
 
       <Text style={styles.sectionTitle}>Acesso rapido</Text>
       <View style={styles.quickGrid}>
@@ -220,8 +312,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: colors.primary
   },
-  heroCard: {
-    minHeight: 250,
+  heroCarousel: {
     borderRadius: 30,
     overflow: 'hidden',
     shadowColor: '#152217',
@@ -230,6 +321,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 14 },
     elevation: 9
   },
+  heroCard: {
+    minHeight: 250
+  },
   heroImage: {
     borderRadius: 30
   },
@@ -237,7 +331,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 26,
     paddingTop: 28,
-    paddingBottom: 20,
+    paddingBottom: 52,
     justifyContent: 'flex-end'
   },
   heroIconWrap: {
@@ -262,11 +356,14 @@ const styles = StyleSheet.create({
     marginTop: 14
   },
   heroDots: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    marginTop: 26
+    gap: 10
   },
   heroDot: {
     width: 12,
