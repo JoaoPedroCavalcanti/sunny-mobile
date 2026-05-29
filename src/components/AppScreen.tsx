@@ -19,17 +19,19 @@ export function AppScreen({ children, scroll = true, refreshing, onRefresh }: Pr
   }
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} />
-        ) : undefined
-      }
-    >
-      {children}
-    </ScrollView>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingTop: 12 }]}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} />
+          ) : undefined
+        }
+      >
+        {children}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -37,6 +39,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.bg
+  },
+  scroll: {
+    flex: 1
   },
   content: {
     paddingHorizontal: 16,

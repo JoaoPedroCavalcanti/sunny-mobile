@@ -71,7 +71,7 @@ const HERO_SLIDES: HeroSlide[] = [
   }
 ];
 
-const HERO_AUTOPLAY_MS = 5000;
+const HERO_AUTOPLAY_MS = 8000;
 
 export function HomeScreen() {
   const navigation = useNavigation<HomeNav>();
@@ -87,6 +87,7 @@ export function HomeScreen() {
   const heroListRef = useRef<FlatList<HeroSlide>>(null);
   const [heroWidth, setHeroWidth] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [heroInteractionTick, setHeroInteractionTick] = useState(0);
 
   const handleHeroLayout = useCallback((event: LayoutChangeEvent) => {
     setHeroWidth(event.nativeEvent.layout.width);
@@ -98,6 +99,7 @@ export function HomeScreen() {
       const offsetX = event.nativeEvent.contentOffset.x;
       const next = Math.round(offsetX / heroWidth);
       setHeroIndex(Math.max(0, Math.min(HERO_SLIDES.length - 1, next)));
+      setHeroInteractionTick((t) => t + 1);
     },
     [heroWidth]
   );
@@ -112,7 +114,7 @@ export function HomeScreen() {
       });
     }, HERO_AUTOPLAY_MS);
     return () => clearInterval(id);
-  }, [heroWidth]);
+  }, [heroWidth, heroInteractionTick]);
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
@@ -149,6 +151,12 @@ export function HomeScreen() {
 
   const residentName =
     user?.first_name?.trim() || user?.username?.trim() || 'morador(a)';
+
+  const heroActions: Record<string, (() => void) | undefined> = {
+    welcome: undefined,
+    reservas: () => navigation.navigate('Reservas'),
+    avisos: () => navigation.navigate('Comunicados')
+  };
 
   const quickActions = [
     {
@@ -196,27 +204,36 @@ export function HomeScreen() {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={handleHeroScroll}
-            renderItem={({ item }) => (
-              <ImageBackground
-                source={item.image}
-                resizeMode="cover"
-                imageStyle={styles.heroImage}
-                style={[styles.heroCard, { width: heroWidth }]}
-              >
-                <LinearGradient
-                  colors={['rgba(21, 29, 22, 0.78)', 'rgba(21, 29, 22, 0.44)', 'rgba(21, 29, 22, 0.12)']}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={styles.heroOverlay}
+            renderItem={({ item }) => {
+              const onPress = heroActions[item.key];
+              return (
+                <Pressable
+                  onPress={onPress}
+                  disabled={!onPress}
+                  style={{ width: heroWidth }}
                 >
-                  <View style={styles.heroIconWrap}>
-                    <Ionicons name={item.icon} size={36} color="#9CC85F" />
-                  </View>
-                  <Text style={styles.heroTitle}>{item.title}</Text>
-                  <Text style={styles.heroText}>{item.text}</Text>
-                </LinearGradient>
-              </ImageBackground>
-            )}
+                  <ImageBackground
+                    source={item.image}
+                    resizeMode="cover"
+                    imageStyle={styles.heroImage}
+                    style={styles.heroCard}
+                  >
+                    <LinearGradient
+                      colors={['rgba(21, 29, 22, 0.78)', 'rgba(21, 29, 22, 0.44)', 'rgba(21, 29, 22, 0.12)']}
+                      start={{ x: 0, y: 0.5 }}
+                      end={{ x: 1, y: 0.5 }}
+                      style={styles.heroOverlay}
+                    >
+                      <View style={styles.heroIconWrap}>
+                        <Ionicons name={item.icon} size={36} color="#9CC85F" />
+                      </View>
+                      <Text style={styles.heroTitle}>{item.title}</Text>
+                      <Text style={styles.heroText}>{item.text}</Text>
+                    </LinearGradient>
+                  </ImageBackground>
+                </Pressable>
+              );
+            }}
           />
         )}
 
