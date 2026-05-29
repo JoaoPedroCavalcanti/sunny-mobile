@@ -6,24 +6,23 @@ import { colors } from '../theme/colors';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ReservationsScreen } from '../screens/ReservationsScreen';
 import { NewsScreen } from '../screens/NewsScreen';
-import { FinanceScreen } from '../screens/FinanceScreen';
+import { VisitorScreen } from '../screens/VisitorScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import type { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const inactiveIconMap: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMap> = {
+const inactiveIconMap: Record<Exclude<keyof MainTabParamList, 'Comunicados'>, keyof typeof Ionicons.glyphMap> = {
   Home: 'home-outline',
   Reservas: 'calendar-outline',
-  Comunicados: 'add',
-  Financeiro: 'wallet-outline',
+  Visitantes: 'people-outline',
   Perfil: 'person-outline'
 };
 
 const activeIconMap: Record<Exclude<keyof MainTabParamList, 'Comunicados'>, keyof typeof Ionicons.glyphMap> = {
   Home: 'home',
   Reservas: 'calendar',
-  Financeiro: 'wallet',
+  Visitantes: 'people',
   Perfil: 'person'
 };
 
@@ -51,7 +50,10 @@ export function MainTabs() {
           route.name === 'Comunicados'
             ? () => null
             : ({ focused, color }) => (
-                <Text style={[styles.tabLabel, focused && styles.tabLabelActive, { color }]}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.tabLabel, focused && styles.tabLabelActive, { color }]}
+                >
                   {route.name === 'Home' ? 'Inicio' : route.name}
                 </Text>
               ),
@@ -59,7 +61,7 @@ export function MainTabs() {
           if (route.name === 'Comunicados') {
             return (
               <View style={styles.centerAction}>
-                <Ionicons name="add" size={34} color="#FFFFFF" />
+                <Ionicons name="megaphone" size={30} color="#FFFFFF" />
               </View>
             );
           }
@@ -67,7 +69,6 @@ export function MainTabs() {
           const iconName = focused
             ? activeIconMap[route.name]
             : inactiveIconMap[route.name];
-
           return <Ionicons name={iconName} size={26} color={color} />;
         }
       })}
@@ -75,7 +76,7 @@ export function MainTabs() {
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Reservas" component={ReservationsScreen} />
       <Tab.Screen name="Comunicados" component={NewsScreen} />
-      <Tab.Screen name="Financeiro" component={FinanceScreen} />
+      <Tab.Screen name="Visitantes" component={VisitorScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />
     </Tab.Navigator>
   );

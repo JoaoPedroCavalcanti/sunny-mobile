@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../navigation/types';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { MainTabParamList, RootStackParamList } from '../navigation/types';
 import { useAuthStore } from '../store/authStore';
 import { AppScreen } from '../components/AppScreen';
 import { SectionHeader } from '../components/SectionHeader';
@@ -14,8 +15,13 @@ import type { User } from '../types/domain';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
 
+type ProfileNav = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Perfil'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
+
 export function ProfileScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<ProfileNav>();
   const { user, setUser, logout } = useAuthStore();
   const [firstName, setFirstName] = useState(user?.first_name ?? '');
   const [lastName, setLastName] = useState(user?.last_name ?? '');
@@ -88,7 +94,7 @@ export function ProfileScreen() {
       <AppCard>
         <Text style={styles.blockTitle}>Acoes rapidas</Text>
         <View style={styles.row}>
-          <AppButton title="Visitantes" onPress={() => navigation.navigate('Visitors')} style={styles.action} />
+          <AppButton title="Visitantes" onPress={() => navigation.navigate('Visitantes')} style={styles.action} />
           <AppButton title="Solicitacoes" onPress={() => navigation.navigate('ServiceRequests')} style={styles.action} />
         </View>
         <AppButton title="Check-in por link" variant="ghost" onPress={() => navigation.navigate('VisitorCheckin')} />

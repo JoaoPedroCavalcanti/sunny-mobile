@@ -177,7 +177,7 @@ export function HomeScreen() {
     {
       label: 'Visitantes',
       icon: 'people-outline' as const,
-      onPress: () => navigation.navigate('Visitors')
+      onPress: () => navigation.navigate('Visitantes')
     }
   ];
 
