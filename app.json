@@ -25,11 +25,9 @@
     "web": {
       "bundler": "metro"
     },
+    "extra": {},
     "plugins": [
-      "react-native-reanimated"
-    ],
-    "extra": {
-      "apiBaseUrl": "http://127.0.0.1:8000"
-    }
+      "expo-asset"
+    ]
   }
 }

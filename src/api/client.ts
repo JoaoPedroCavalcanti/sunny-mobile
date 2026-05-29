@@ -2,11 +2,35 @@ import axios from 'axios';
 import Constants from 'expo-constants';
 import { useAuthStore } from '@/store/authStore';
 
-const expoBaseUrl =
+const configuredBaseUrl =
   (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
   (process.env.EXPO_PUBLIC_API_BASE_URL as string | undefined);
 
-const baseURL = expoBaseUrl ?? 'http://127.0.0.1:8000';
+const getExpoHostBaseUrl = () => {
+  const hostUri = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost;
+  const host = hostUri?.split(':')[0];
+
+  if (!host) {
+    return null;
+  }
+
+  return `http://${host}:8000`;
+};
+
+const isLoopbackUrl = (url?: string) => {
+  if (!url) {
+    return false;
+  }
+
+  return /\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(url);
+};
+
+const expoHostBaseUrl = getExpoHostBaseUrl();
+
+const baseURL =
+  (!configuredBaseUrl || isLoopbackUrl(configuredBaseUrl)) && expoHostBaseUrl
+    ? expoHostBaseUrl
+    : configuredBaseUrl ?? 'http://127.0.0.1:8000';
 
 export const api = axios.create({
   baseURL,
