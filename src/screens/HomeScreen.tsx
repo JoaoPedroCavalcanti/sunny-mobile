@@ -252,10 +252,10 @@ export function HomeScreen() {
         {quickActions.map((item) => (
           <Pressable key={item.label} style={styles.quickCard} onPress={item.onPress}>
             <View style={styles.quickIconWrap}>
-              <Ionicons name={item.icon} size={34} color={colors.primary} />
+              <Ionicons name={item.icon} size={24} color={colors.primary} />
             </View>
             <Pressable style={styles.quickArrow} onPress={item.onPress}>
-              <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
+              <Ionicons name="chevron-forward" size={16} color={colors.textPrimary} />
             </Pressable>
             <Text style={styles.quickText}>{item.label}</Text>
           </Pressable>
@@ -264,7 +264,7 @@ export function HomeScreen() {
 
       <Pressable style={styles.noticeCard} onPress={() => navigation.navigate('Comunicados')}>
         <View style={styles.noticeIconWrap}>
-          <Ionicons name="megaphone-outline" size={34} color={colors.primary} />
+          <Ionicons name="megaphone-outline" size={24} color={colors.primary} />
         </View>
         <View style={styles.noticeCopy}>
           <Text style={styles.noticeTitle}>{dashboard.latestNewsTitle}</Text>
@@ -281,7 +281,7 @@ export function HomeScreen() {
             </Text>
           )}
         </View>
-        <Ionicons name="chevron-forward" size={24} color={colors.textPrimary} />
+        <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
       </Pressable>
     </AppScreen>
   );
@@ -394,95 +394,95 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: colors.textPrimary,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '800',
-    marginTop: 18,
-    marginBottom: 4
+    marginTop: 14,
+    marginBottom: 2
   },
   quickGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16
+    gap: 12
   },
   quickCard: {
-    width: '47.8%',
-    minHeight: 164,
-    borderRadius: 28,
+    width: '48.3%',
+    minHeight: 116,
+    borderRadius: 20,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 18,
-    paddingTop: 22,
-    paddingBottom: 18,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
     shadowColor: '#112016',
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3
   },
   quickIconWrap: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: '#F1F7F1',
     alignItems: 'center',
     justifyContent: 'center'
   },
   quickArrow: {
     position: 'absolute',
-    right: 18,
-    top: 74,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#F7F8FA',
+    right: 14,
+    top: 54,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F4F6F8',
     alignItems: 'center',
     justifyContent: 'center'
   },
   quickText: {
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
-    marginTop: 34,
-    maxWidth: '72%'
+    marginTop: 22,
+    maxWidth: '74%'
   },
   noticeCard: {
-    marginTop: 14,
-    borderRadius: 28,
+    marginTop: 10,
+    borderRadius: 20,
     backgroundColor: '#F7F8F8',
-    padding: 18,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
     shadowColor: '#132115',
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3
   },
   noticeIconWrap: {
-    width: 76,
-    height: 76,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
     backgroundColor: '#EDF5EE',
     alignItems: 'center',
     justifyContent: 'center'
   },
   noticeCopy: {
     flex: 1,
-    gap: 4
+    gap: 2
   },
   noticeTitle: {
     color: colors.textPrimary,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800'
   },
   noticeBody: {
     color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 22
+    fontSize: 12,
+    lineHeight: 18
   },
   noticeMeta: {
     color: colors.primaryDark,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     marginTop: 2
   }
