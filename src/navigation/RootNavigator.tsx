@@ -3,7 +3,6 @@ import { ActivityIndicator, View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MainTabs } from './MainTabs';
 import { LoginScreen } from '../screens/LoginScreen';
-import { NewReservationScreen } from '../screens/NewReservationScreen';
 import { ServiceRequestsScreen } from '../screens/ServiceRequestsScreen';
 import { VisitorCheckinScreen } from '../screens/VisitorCheckinScreen';
 import type { RootStackParamList } from './types';
@@ -60,11 +59,6 @@ export function RootNavigator() {
           <Stack.Screen
             name="MainTabs"
             component={MainTabs}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="NewReservation"
-            component={NewReservationScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen

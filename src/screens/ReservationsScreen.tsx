@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppScreen } from '../components/AppScreen';
 import { AppCard } from '../components/AppCard';
@@ -15,14 +14,11 @@ import {
 import type { Reservation } from '../types/domain';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
-import type { MainTabParamList, RootStackParamList } from '../navigation/types';
+import type { ReservationsStackParamList } from '../navigation/types';
 
 type ReservationTab = 'bbq' | 'hall';
 
-type ReservationsNav = CompositeNavigationProp<
-  BottomTabNavigationProp<MainTabParamList, 'Reservas'>,
-  NativeStackNavigationProp<RootStackParamList>
->;
+type ReservationsNav = NativeStackNavigationProp<ReservationsStackParamList, 'ReservationsList'>;
 
 export function ReservationsScreen() {
   const navigation = useNavigation<ReservationsNav>();

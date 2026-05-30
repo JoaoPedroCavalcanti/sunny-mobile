@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { HomeScreen } from '../screens/HomeScreen';
-import { ReservationsScreen } from '../screens/ReservationsScreen';
+import { ReservationsStack } from './ReservationsStack';
 import { NewsScreen } from '../screens/NewsScreen';
 import { VisitorScreen } from '../screens/VisitorScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -74,7 +74,7 @@ export function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Reservas" component={ReservationsScreen} />
+      <Tab.Screen name="Reservas" component={ReservationsStack} />
       <Tab.Screen name="Comunicados" component={NewsScreen} />
       <Tab.Screen name="Visitantes" component={VisitorScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />

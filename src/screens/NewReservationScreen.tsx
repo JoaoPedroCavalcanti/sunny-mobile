@@ -1,5 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from 'react-native';
+
+const SHEET_MIN_HEIGHT = Math.round(Dimensions.get('window').height * 0.58);
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,7 +21,7 @@ import { AppScreen } from '../components/AppScreen';
 import { createBbqReservation, createHallReservation } from '../api/reservations';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
-import type { RootStackParamList } from '../navigation/types';
+import type { ReservationsStackParamList } from '../navigation/types';
 
 type SpaceType = 'bbq' | 'hall';
 
@@ -105,8 +119,8 @@ function getMockDayReservations(date: Date, space: SpaceType): DayReservation[] 
   return base;
 }
 
-type NewReservationNav = NativeStackNavigationProp<RootStackParamList, 'NewReservation'>;
-type NewReservationRouteProp = RouteProp<RootStackParamList, 'NewReservation'>;
+type NewReservationNav = NativeStackNavigationProp<ReservationsStackParamList, 'NewReservation'>;
+type NewReservationRouteProp = RouteProp<ReservationsStackParamList, 'NewReservation'>;
 
 export function NewReservationScreen() {
   const navigation = useNavigation<NewReservationNav>();
@@ -286,7 +300,15 @@ export function NewReservationScreen() {
         </View>
         <View style={styles.selectedDayCopy}>
           <Text style={styles.selectedDayTitle}>{selectedLabel}</Text>
-          <Text style={styles.selectedDaySpace}>
+          <Text style={styles.selectedDaySpace}>Reservando para este dia</Text>
+        </View>
+        <View style={styles.spacePill}>
+          <Ionicons
+            name={space === 'bbq' ? 'flame' : 'business'}
+            size={14}
+            color="#FFFFFF"
+          />
+          <Text style={styles.spacePillText}>
             {space === 'bbq' ? 'Churrasqueira' : 'Salao de festas'}
           </Text>
         </View>
@@ -344,84 +366,127 @@ export function NewReservationScreen() {
 
       <Text style={styles.sectionTitle}>Fazer nova solicitacao</Text>
 
-      {!composerOpen ? (
-        <Pressable style={styles.ctaCard} onPress={() => setComposerOpen(true)}>
-          <View style={styles.ctaIcon}>
-            <Ionicons name="calendar" size={22} color="#FFFFFF" />
-          </View>
-          <View style={styles.ctaCopy}>
-            <Text style={styles.ctaTitle}>Solicitar reserva para este dia</Text>
-            <Text style={styles.ctaBody}>
-              Informe o horario e os detalhes da sua reserva.{'\n'}A solicitacao sera enviada ao
-              sindico para aprovacao.
-            </Text>
-          </View>
-          <View style={styles.ctaChevron}>
-            <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-          </View>
-        </Pressable>
-      ) : (
-        <View style={styles.composerCard}>
-          <Text style={styles.composerTitle}>Detalhes da reserva</Text>
-
-          <View style={styles.composerRow}>
-            <View style={styles.composerField}>
-              <Text style={styles.fieldLabel}>Hora inicial</Text>
-              <NumberField
-                value={startHour}
-                onChange={setStartHour}
-                min={0}
-                max={23}
-                maxLength={2}
-                suffix="h"
-                placeholder="00"
-              />
-            </View>
-            <View style={styles.composerField}>
-              <Text style={styles.fieldLabel}>Hora final</Text>
-              <NumberField
-                value={endHour}
-                onChange={setEndHour}
-                min={1}
-                max={24}
-                maxLength={2}
-                suffix="h"
-                placeholder="00"
-              />
-            </View>
-          </View>
-
-          <View style={styles.composerField}>
-            <Text style={styles.fieldLabel}>Numero de pessoas</Text>
-            <NumberField
-              value={guestCount}
-              onChange={setGuestCount}
-              min={0}
-              maxLength={3}
-              placeholder="0"
-            />
-          </View>
-
-          <View style={styles.composerActions}>
-            <Pressable
-              style={[styles.composerButton, styles.composerCancel]}
-              onPress={() => setComposerOpen(false)}
-              disabled={loading}
-            >
-              <Text style={styles.composerCancelText}>Cancelar</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.composerButton, styles.composerSubmit]}
-              onPress={submitReservation}
-              disabled={loading}
-            >
-              <Text style={styles.composerSubmitText}>
-                {loading ? 'Enviando...' : 'Solicitar'}
-              </Text>
-            </Pressable>
-          </View>
+      <Pressable style={styles.ctaCard} onPress={() => setComposerOpen(true)}>
+        <View style={styles.ctaIcon}>
+          <Ionicons name={space === 'bbq' ? 'flame' : 'business'} size={22} color="#FFFFFF" />
         </View>
-      )}
+        <View style={styles.ctaCopy}>
+          <Text style={styles.ctaTitle}>
+            Solicitar reserva para {space === 'bbq' ? 'Churrasqueira' : 'Salao de festas'}
+          </Text>
+          <Text style={styles.ctaBody}>
+            Informe o horario e os detalhes da sua reserva.{'\n'}A solicitacao sera enviada ao
+            sindico para aprovacao.
+          </Text>
+        </View>
+        <View style={styles.ctaChevron}>
+          <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+        </View>
+      </Pressable>
+
+      <Modal
+        visible={composerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setComposerOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.sheetWrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setComposerOpen(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetSpaceIcon}>
+                <Ionicons
+                  name={space === 'bbq' ? 'flame' : 'business'}
+                  size={22}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sheetEyebrow}>Nova reserva</Text>
+                <Text style={styles.sheetSpaceName}>
+                  {space === 'bbq' ? 'Churrasqueira' : 'Salao de festas'}
+                </Text>
+                <Text style={styles.sheetSubtitle}>{selectedLabel}</Text>
+              </View>
+              <Pressable
+                onPress={() => setComposerOpen(false)}
+                hitSlop={8}
+                style={styles.sheetCloseButton}
+              >
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.sheetBody}
+              contentContainerStyle={styles.sheetBodyContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.composerRow}>
+                <View style={styles.composerField}>
+                  <Text style={styles.fieldLabel}>Hora inicial</Text>
+                  <NumberField
+                    value={startHour}
+                    onChange={setStartHour}
+                    min={0}
+                    max={23}
+                    maxLength={2}
+                    suffix="h"
+                    placeholder="00"
+                  />
+                </View>
+                <View style={styles.composerField}>
+                  <Text style={styles.fieldLabel}>Hora final</Text>
+                  <NumberField
+                    value={endHour}
+                    onChange={setEndHour}
+                    min={1}
+                    max={24}
+                    maxLength={2}
+                    suffix="h"
+                    placeholder="00"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.composerField}>
+                <Text style={styles.fieldLabel}>Numero de pessoas</Text>
+                <NumberField
+                  value={guestCount}
+                  onChange={setGuestCount}
+                  min={0}
+                  maxLength={3}
+                  placeholder="0"
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.composerActions}>
+              <Pressable
+                style={[styles.composerButton, styles.composerCancel]}
+                onPress={() => setComposerOpen(false)}
+                disabled={loading}
+              >
+                <Text style={styles.composerCancelText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.composerButton, styles.composerSubmit]}
+                onPress={submitReservation}
+                disabled={loading}
+              >
+                <Text style={styles.composerSubmitText}>
+                  {loading ? 'Enviando...' : 'Solicitar'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </AppScreen>
   );
 }
@@ -641,11 +706,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
     shadowColor: '#132016',
     shadowOpacity: 0.04,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 2
+  },
+  spacePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999
+  },
+  spacePillText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700'
   },
   selectedDayIcon: {
     width: 40,
@@ -805,16 +886,82 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
-  composerCard: {
+  sheetWrapper: {
+    flex: 1,
+    justifyContent: 'flex-end'
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 28, 19, 0.45)'
+  },
+  sheet: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    gap: 12,
-    shadowColor: '#132016',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+    minHeight: SHEET_MIN_HEIGHT,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 16
+  },
+  sheetBody: {
+    flexGrow: 0
+  },
+  sheetBodyContent: {
+    gap: 14,
+    paddingBottom: 4
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D8DCDA',
+    marginBottom: 6
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12
+  },
+  sheetSpaceIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#EAF5EF',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sheetEyebrow: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase'
+  },
+  sheetSpaceName: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 1
+  },
+  sheetSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2
+  },
+  sheetCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F4F6F5',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   composerTitle: {
     color: colors.textPrimary,
