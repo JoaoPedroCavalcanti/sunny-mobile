@@ -13,7 +13,7 @@ import {
   View
 } from 'react-native';
 
-const SHEET_MIN_HEIGHT = Math.round(Dimensions.get('window').height * 0.58);
+const SHEET_MIN_HEIGHT = Math.round(Dimensions.get('window').height * 0.5);
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -397,11 +397,12 @@ export function NewReservationScreen() {
           <Pressable style={styles.sheetBackdrop} onPress={() => setComposerOpen(false)} />
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
+
             <View style={styles.sheetHeader}>
               <View style={styles.sheetSpaceIcon}>
                 <Ionicons
                   name={space === 'bbq' ? 'flame' : 'business'}
-                  size={22}
+                  size={26}
                   color={colors.primary}
                 />
               </View>
@@ -410,7 +411,10 @@ export function NewReservationScreen() {
                 <Text style={styles.sheetSpaceName}>
                   {space === 'bbq' ? 'Churrasqueira' : 'Salao de festas'}
                 </Text>
-                <Text style={styles.sheetSubtitle}>{selectedLabel}</Text>
+                <View style={styles.sheetDateRow}>
+                  <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
+                  <Text style={styles.sheetSubtitle}>{selectedLabel}</Text>
+                </View>
               </View>
               <Pressable
                 onPress={() => setComposerOpen(false)}
@@ -421,15 +425,18 @@ export function NewReservationScreen() {
               </Pressable>
             </View>
 
+            <View style={styles.sheetDivider} />
+
             <ScrollView
               style={styles.sheetBody}
               contentContainerStyle={styles.sheetBodyContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
+              <Text style={styles.sectionLabel}>Horario</Text>
               <View style={styles.composerRow}>
                 <View style={styles.composerField}>
-                  <Text style={styles.fieldLabel}>Hora inicial</Text>
+                  <Text style={styles.fieldLabel}>Inicio</Text>
                   <NumberField
                     value={startHour}
                     onChange={setStartHour}
@@ -440,8 +447,11 @@ export function NewReservationScreen() {
                     placeholder="00"
                   />
                 </View>
+                <View style={styles.composerArrow}>
+                  <Ionicons name="arrow-forward" size={16} color="#B6BAC3" />
+                </View>
                 <View style={styles.composerField}>
-                  <Text style={styles.fieldLabel}>Hora final</Text>
+                  <Text style={styles.fieldLabel}>Fim</Text>
                   <NumberField
                     value={endHour}
                     onChange={setEndHour}
@@ -454,6 +464,28 @@ export function NewReservationScreen() {
                 </View>
               </View>
 
+              <View style={styles.durationPill}>
+                <Ionicons name="time-outline" size={13} color={colors.primary} />
+                <Text style={styles.durationText}>
+                  {(() => {
+                    const sh = Number(startHour);
+                    const eh = Number(endHour);
+                    if (
+                      Number.isFinite(sh) &&
+                      Number.isFinite(eh) &&
+                      eh > sh &&
+                      sh >= 0 &&
+                      eh <= 24
+                    ) {
+                      const diff = eh - sh;
+                      return `${diff} ${diff === 1 ? 'hora' : 'horas'} reservadas`;
+                    }
+                    return 'Defina um horario valido';
+                  })()}
+                </Text>
+              </View>
+
+              <Text style={styles.sectionLabel}>Convidados</Text>
               <View style={styles.composerField}>
                 <Text style={styles.fieldLabel}>Numero de pessoas</Text>
                 <NumberField
@@ -480,8 +512,11 @@ export function NewReservationScreen() {
                 disabled={loading}
               >
                 <Text style={styles.composerSubmitText}>
-                  {loading ? 'Enviando...' : 'Solicitar'}
+                  {loading ? 'Enviando...' : 'Solicitar reserva'}
                 </Text>
+                {!loading ? (
+                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                ) : null}
               </Pressable>
             </View>
           </View>
@@ -927,33 +962,72 @@ const styles = StyleSheet.create({
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12
+    gap: 14,
+    marginTop: 4
   },
   sheetSpaceIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     backgroundColor: '#EAF5EF',
     alignItems: 'center',
     justifyContent: 'center'
   },
   sheetEyebrow: {
     color: colors.primary,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.6,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
     textTransform: 'uppercase'
   },
   sheetSpaceName: {
     color: colors.textPrimary,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
-    marginTop: 1
+    marginTop: 2
+  },
+  sheetDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3
   },
   sheetSubtitle: {
     color: colors.textMuted,
     fontSize: 12,
-    marginTop: 2
+    fontWeight: '500'
+  },
+  sheetDivider: {
+    height: 1,
+    backgroundColor: '#EEF1EF',
+    marginVertical: 2
+  },
+  sectionLabel: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: -2
+  },
+  composerArrow: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 22
+  },
+  durationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EAF5EF'
+  },
+  durationText: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '700'
   },
   sheetCloseButton: {
     width: 32,
@@ -984,32 +1058,39 @@ const styles = StyleSheet.create({
   numberField: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F4F6F5',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 46,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E4E8E6',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 52,
     gap: 4
   },
   numberInput: {
     flex: 1,
     color: colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-    paddingVertical: 0
+    fontSize: 20,
+    fontWeight: '800',
+    paddingVertical: 0,
+    letterSpacing: 0.3
   },
   numberSuffix: {
     color: colors.textMuted,
     fontSize: 13,
-    fontWeight: '600',
-    marginRight: 4
+    fontWeight: '700',
+    marginRight: 6
   },
   numberSteppers: {
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 2
+    gap: 1,
+    paddingLeft: 6,
+    borderLeftWidth: 1,
+    borderLeftColor: '#EEF1EF',
+    height: 32
   },
   numberStepperButton: {
-    width: 20,
+    width: 22,
     height: 16,
     alignItems: 'center',
     justifyContent: 'center'
@@ -1035,7 +1116,9 @@ const styles = StyleSheet.create({
     fontSize: 14
   },
   composerSubmit: {
-    backgroundColor: colors.primaryDark
+    backgroundColor: colors.primaryDark,
+    flexDirection: 'row',
+    gap: 8
   },
   composerSubmitText: {
     color: '#FFFFFF',
