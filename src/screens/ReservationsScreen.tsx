@@ -14,6 +14,7 @@ import {
 import type { Reservation } from '../types/domain';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
+import { parseDateInput } from '../utils/date';
 import type { ReservationsStackParamList } from '../navigation/types';
 
 type ReservationTab = 'bbq' | 'hall';
@@ -61,19 +62,24 @@ export function ReservationsScreen() {
     () =>
       [...list].sort(
         (a, b) =>
-          new Date(a.reservation_date).getTime() - new Date(b.reservation_date).getTime()
+          parseDateInput(a.reservation_date).getTime() -
+          parseDateInput(b.reservation_date).getTime()
       ),
     [list]
   );
 
-  const now = Date.now();
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }, []);
 
   const upcomingReservations = sortedReservations.filter(
-    (item) => new Date(item.reservation_date).getTime() >= now
+    (item) => parseDateInput(item.reservation_date).getTime() >= todayStart
   );
 
   const pastReservations = [...sortedReservations]
-    .filter((item) => new Date(item.reservation_date).getTime() < now)
+    .filter((item) => parseDateInput(item.reservation_date).getTime() < todayStart)
     .reverse();
 
   const rulesText =
@@ -248,8 +254,8 @@ function ReservationRow({
       <View style={styles.rowCopy}>
         <Text style={styles.rowTitle}>{formatReservationHeadline(item.reservation_date)}</Text>
         <View style={styles.metaRow}>
-          <Ionicons name="time-outline" size={13} color="#8D93A1" />
-          <Text style={styles.metaText}>{formatReservationSlot(item.reservation_date)}</Text>
+          <Ionicons name="calendar-outline" size={13} color="#8D93A1" />
+          <Text style={styles.metaText}>{formatReservationFullDate(item.reservation_date)}</Text>
         </View>
         <View style={styles.metaRow}>
           <Ionicons name="people-outline" size={13} color="#8D93A1" />
@@ -281,7 +287,7 @@ function ReservationRow({
 }
 
 function formatReservationHeadline(value: string) {
-  const date = new Date(value);
+  const date = parseDateInput(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
@@ -296,7 +302,7 @@ function formatReservationHeadline(value: string) {
 }
 
 function formatReservationFullDate(value: string) {
-  const date = new Date(value);
+  const date = parseDateInput(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
@@ -304,30 +310,8 @@ function formatReservationFullDate(value: string) {
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+    year: 'numeric'
   }).format(date);
-}
-
-function formatReservationSlot(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'Horario a confirmar';
-  }
-
-  const start = new Intl.DateTimeFormat('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(date);
-
-  const endDate = new Date(date.getTime() + 4 * 60 * 60 * 1000);
-  const end = new Intl.DateTimeFormat('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(endDate);
-
-  return `${start} - ${end}`;
 }
 
 const styles = StyleSheet.create({

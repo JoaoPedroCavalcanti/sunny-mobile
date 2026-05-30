@@ -1,11 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppScreen } from '../components/AppScreen';
-import { listVisitors } from '../api/visitors';
+import { createVisitor, deleteVisitor, listVisitors } from '../api/visitors';
+import { useAuthStore } from '../store/authStore';
+import { extractErrorMessage } from '../utils/extractError';
 import type { VisitorAccess } from '../types/domain';
 import { colors } from '../theme/colors';
 import type { MainTabParamList, RootStackParamList } from '../navigation/types';
@@ -17,6 +30,7 @@ type StatusKey = 'authorized' | 'waiting' | 'completed' | 'cancelled';
 
 type VisitorRow = {
   key: string;
+  id: number;
   name: string;
   scheduledAt: string;
   apartment: string;
@@ -41,7 +55,7 @@ const STATUS_STYLES: Record<StatusKey, { label: string; color: string; bg: strin
   cancelled: { label: 'Cancelada', color: '#CD3131', bg: '#FBE3E3' }
 };
 
-// Mocked groups until the backend exposes the real endpoint.
+// Backend nao expoe endpoint de grupos de visitantes ainda; mantemos mock.
 const MOCK_GROUPS: GroupRow[] = [
   {
     key: 'g-1',
@@ -93,6 +107,7 @@ function toVisitorRow(item: VisitorAccess): VisitorRow {
     new Date(scheduled).getTime() < Date.now();
   return {
     key: `v-${item.id}`,
+    id: item.id,
     name: item.visitor_name || 'Visitante',
     scheduledAt: scheduled,
     apartment: 'Apartamento 101',
@@ -140,6 +155,19 @@ function pickAvatarTone(seed: string) {
   return palette[hash % palette.length];
 }
 
+function combineDateTime(dateStr: string, timeStr: string): string | null {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const [hourPart = '0', minutePart = '0'] = (timeStr || '00:00').split(':');
+  const hours = Number(hourPart);
+  const minutes = Number(minutePart);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  const date = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
 type VisitorsNav = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Visitantes'>,
   NativeStackNavigationProp<RootStackParamList>
@@ -147,10 +175,19 @@ type VisitorsNav = CompositeNavigationProp<
 
 export function VisitorScreen() {
   const navigation = useNavigation<VisitorsNav>();
+  const currentUser = useAuthStore((state) => state.user);
   const [items, setItems] = useState<VisitorAccess[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [outerTab, setOuterTab] = useState<OuterTab>('upcoming');
   const [innerTab, setInnerTab] = useState<InnerTab>('visitors');
+
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [visitorName, setVisitorName] = useState('');
+  const [visitorEmail, setVisitorEmail] = useState('');
+  const [visitorDate, setVisitorDate] = useState('');
+  const [visitorTime, setVisitorTime] = useState('');
+  const [visitorDescription, setVisitorDescription] = useState('');
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
@@ -188,6 +225,71 @@ export function VisitorScreen() {
   function handleBack() {
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.navigate('Home');
+  }
+
+  function resetComposer() {
+    setVisitorName('');
+    setVisitorEmail('');
+    setVisitorDate('');
+    setVisitorTime('');
+    setVisitorDescription('');
+  }
+
+  function openComposer() {
+    resetComposer();
+    setComposerOpen(true);
+  }
+
+  async function submitVisitor() {
+    if (!visitorName.trim()) {
+      Alert.alert('Dados incompletos', 'Informe o nome do visitante.');
+      return;
+    }
+    const scheduled = combineDateTime(visitorDate, visitorTime);
+    if (!scheduled) {
+      Alert.alert('Data invalida', 'Informe data e horario validos (AAAA-MM-DD e HH:MM).');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await createVisitor({
+        visitor_name: visitorName.trim(),
+        scheduled_date: scheduled,
+        host_user: currentUser?.id ?? null,
+        email: visitorEmail.trim() || undefined,
+        description: visitorDescription.trim() || undefined
+      });
+      setComposerOpen(false);
+      resetComposer();
+      await loadData();
+    } catch (error) {
+      Alert.alert('Falha ao cadastrar', extractErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteVisitor(row: VisitorRow) {
+    Alert.alert(
+      'Remover visitante',
+      `Deseja remover ${row.name}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteVisitor(row.id);
+              await loadData();
+            } catch (error) {
+              Alert.alert('Falha ao remover', extractErrorMessage(error));
+            }
+          }
+        }
+      ]
+    );
   }
 
   const isVisitors = innerTab === 'visitors';
@@ -269,21 +371,19 @@ export function VisitorScreen() {
           </Text>
         </View>
       ) : isVisitors ? (
-        filteredVisitors.map((row) => <VisitorCard key={row.key} row={row} />)
+        filteredVisitors.map((row) => (
+          <VisitorCard
+            key={row.key}
+            row={row}
+            onLongPress={() => handleDeleteVisitor(row)}
+          />
+        ))
       ) : (
         filteredGroups.map((row) => <GroupCard key={row.key} row={row} />)
       )}
 
       <View style={styles.actionsBlock}>
-        <Pressable
-          style={styles.primaryAction}
-          onPress={() =>
-            Alert.alert(
-              'Cadastrar visitante',
-              'Em breve voce podera cadastrar um novo visitante por aqui.'
-            )
-          }
-        >
+        <Pressable style={styles.primaryAction} onPress={openComposer}>
           <Ionicons name="add" size={18} color="#FFFFFF" />
           <Text style={styles.primaryActionText}>Cadastrar visitante</Text>
         </Pressable>
@@ -300,15 +400,152 @@ export function VisitorScreen() {
           <Text style={styles.secondaryActionText}>Cadastrar grupo de visitantes</Text>
         </Pressable>
       </View>
+
+      <Modal
+        visible={composerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setComposerOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.sheetWrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setComposerOpen(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeaderRow}>
+              <Text style={styles.sheetTitle}>Novo visitante</Text>
+              <Pressable
+                onPress={() => setComposerOpen(false)}
+                hitSlop={8}
+                style={styles.sheetClose}
+              >
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.sheetBody}
+              contentContainerStyle={styles.sheetBodyContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <FormField
+                label="Nome do visitante"
+                value={visitorName}
+                onChangeText={setVisitorName}
+                placeholder="Ex: Maria Souza"
+              />
+              <FormField
+                label="E-mail (opcional)"
+                value={visitorEmail}
+                onChangeText={setVisitorEmail}
+                placeholder="visitante@email.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <View style={styles.row}>
+                <View style={styles.flex1}>
+                  <FormField
+                    label="Data (AAAA-MM-DD)"
+                    value={visitorDate}
+                    onChangeText={setVisitorDate}
+                    placeholder="2025-12-31"
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={styles.flex1}>
+                  <FormField
+                    label="Horario (HH:MM)"
+                    value={visitorTime}
+                    onChangeText={setVisitorTime}
+                    placeholder="19:30"
+                    autoCapitalize="none"
+                  />
+                </View>
+              </View>
+              <FormField
+                label="Observacao (opcional)"
+                value={visitorDescription}
+                onChangeText={setVisitorDescription}
+                placeholder="Detalhes da visita"
+                multiline
+              />
+            </ScrollView>
+
+            <View style={styles.sheetActions}>
+              <Pressable
+                style={[styles.sheetButton, styles.sheetCancel]}
+                onPress={() => setComposerOpen(false)}
+                disabled={submitting}
+              >
+                <Text style={styles.sheetCancelText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.sheetButton, styles.sheetSubmit]}
+                onPress={submitVisitor}
+                disabled={submitting}
+              >
+                <Text style={styles.sheetSubmitText}>
+                  {submitting ? 'Enviando...' : 'Cadastrar'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </AppScreen>
   );
 }
 
-function VisitorCard({ row }: { row: VisitorRow }) {
+type FormFieldProps = {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  keyboardType?: 'default' | 'email-address' | 'number-pad' | 'phone-pad';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  multiline?: boolean;
+};
+
+function FormField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  autoCapitalize,
+  multiline
+}: FormFieldProps) {
+  return (
+    <View style={styles.formField}>
+      <Text style={styles.formLabel}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#B6BAC3"
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        multiline={multiline}
+        style={[styles.formInput, multiline && styles.formInputMultiline]}
+      />
+    </View>
+  );
+}
+
+function VisitorCard({
+  row,
+  onLongPress
+}: {
+  row: VisitorRow;
+  onLongPress: () => void;
+}) {
   const tone = pickAvatarTone(row.name);
   const statusStyle = STATUS_STYLES[row.status];
   return (
-    <View style={styles.card}>
+    <Pressable style={styles.card} onLongPress={onLongPress} delayLongPress={250}>
       <View style={[styles.avatar, { backgroundColor: tone.bg }]}>
         <Text style={[styles.avatarText, { color: tone.color }]}>
           {getInitials(row.name)}
@@ -330,7 +567,7 @@ function VisitorCard({ row }: { row: VisitorRow }) {
           {statusStyle.label}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -549,5 +786,114 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 15,
     fontWeight: '700'
+  },
+  sheetWrapper: {
+    flex: 1,
+    justifyContent: 'flex-end'
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 28, 19, 0.45)'
+  },
+  sheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+    gap: 14,
+    minHeight: 420
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D8DCDA',
+    marginBottom: 6
+  },
+  sheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  sheetTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '800'
+  },
+  sheetClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F4F6F5',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sheetBody: {
+    flexGrow: 0
+  },
+  sheetBodyContent: {
+    gap: 12,
+    paddingBottom: 4
+  },
+  formField: {
+    gap: 6
+  },
+  formLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  formInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E4E8E6',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    minHeight: 46,
+    color: colors.textPrimary,
+    fontSize: 14
+  },
+  formInputMultiline: {
+    paddingTop: 12,
+    paddingBottom: 12,
+    minHeight: 80,
+    textAlignVertical: 'top'
+  },
+  row: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  flex1: {
+    flex: 1
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  sheetButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sheetCancel: {
+    backgroundColor: '#F4F6F5'
+  },
+  sheetCancelText: {
+    color: colors.textPrimary,
+    fontWeight: '700',
+    fontSize: 14
+  },
+  sheetSubmit: {
+    backgroundColor: colors.primaryDark
+  },
+  sheetSubmitText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14
   }
 });

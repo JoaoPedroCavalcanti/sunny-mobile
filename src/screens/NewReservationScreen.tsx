@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -18,18 +18,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppScreen } from '../components/AppScreen';
-import { createBbqReservation, createHallReservation } from '../api/reservations';
+import {
+  createBbqReservation,
+  createHallReservation,
+  listBbqReservations,
+  listHallReservations
+} from '../api/reservations';
+import { listUsers } from '../api/users';
+import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
+import { parseDateInput, toApiDate } from '../utils/date';
 import type { ReservationsStackParamList } from '../navigation/types';
+import type { Reservation, User } from '../types/domain';
 
 type SpaceType = 'bbq' | 'hall';
 
 type DayReservation = {
   id: string;
   resident: string;
-  startHour: number;
-  endHour: number;
   guests: number;
   status: 'Pendente' | 'Aprovada';
 };
@@ -78,10 +85,6 @@ function sameDay(a: Date, b: Date) {
   );
 }
 
-function formatHour(h: number) {
-  return `${h.toString().padStart(2, '0')}:00`;
-}
-
 function getInitials(name: string) {
   return name
     .split(/\s+/)
@@ -91,32 +94,37 @@ function getInitials(name: string) {
     .join('');
 }
 
-// Mock: stable per-day reservations until the backend exposes the real endpoint.
-function getMockDayReservations(date: Date, space: SpaceType): DayReservation[] {
-  const seed = date.getDate() + date.getMonth() * 31;
-  if (seed % 4 === 0) return [];
-  const base: DayReservation[] = [
-    {
-      id: `${seed}-1`,
-      resident: 'Joao Silva',
-      startHour: 10,
-      endHour: 18,
-      guests: 8,
-      status: 'Pendente'
-    },
-    {
-      id: `${seed}-2`,
-      resident: 'Mariana Oliveira',
-      startHour: 14,
-      endHour: 23,
-      guests: 15,
-      status: 'Pendente'
-    }
-  ];
-  if (space === 'hall') {
-    return base.slice(0, 1).map((r) => ({ ...r, resident: 'Carla Mendes', guests: 30 }));
-  }
-  return base;
+function isSameApiDay(reservationDate: string, day: Date) {
+  return toApiDate(parseDateInput(reservationDate)) === toApiDate(day);
+}
+
+function buildDayReservations(
+  reservations: Reservation[],
+  day: Date,
+  usersById: Map<number, User>,
+  currentUser: User | null
+): DayReservation[] {
+  return reservations
+    .filter((r) => isSameApiDay(r.reservation_date, day))
+    .map((r) => {
+      const owner = r.reservation_user ? usersById.get(r.reservation_user) : null;
+      const ownerName =
+        owner && [owner.first_name, owner.last_name].filter(Boolean).join(' ').trim();
+      const fallback =
+        currentUser && currentUser.id === r.reservation_user
+          ? [currentUser.first_name, currentUser.last_name]
+              .filter(Boolean)
+              .join(' ')
+              .trim() ||
+            currentUser.username
+          : 'Morador';
+      return {
+        id: String(r.id),
+        resident: ownerName || owner?.username || fallback,
+        guests: r.guest_count ?? 0,
+        status: 'Pendente'
+      };
+    });
 }
 
 type NewReservationNav = NativeStackNavigationProp<ReservationsStackParamList, 'NewReservation'>;
@@ -126,6 +134,7 @@ export function NewReservationScreen() {
   const navigation = useNavigation<NewReservationNav>();
   const route = useRoute<NewReservationRouteProp>();
   const initialSpace = route.params?.space ?? 'bbq';
+  const currentUser = useAuthStore((state) => state.user);
 
   const [space, setSpace] = useState<SpaceType>(initialSpace);
   const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date()));
@@ -135,6 +144,8 @@ export function NewReservationScreen() {
   const [endHour, setEndHour] = useState('23');
   const [guestCount, setGuestCount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [usersById, setUsersById] = useState<Map<number, User>>(() => new Map());
 
   const weekDays = useMemo(
     () => Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i)),
@@ -142,9 +153,45 @@ export function NewReservationScreen() {
   );
 
   const dayReservations = useMemo(
-    () => getMockDayReservations(selectedDay, space),
-    [selectedDay, space]
+    () => buildDayReservations(reservations, selectedDay, usersById, currentUser),
+    [reservations, selectedDay, usersById, currentUser]
   );
+
+  const reservedDays = useMemo(() => {
+    const set = new Set<string>();
+    reservations.forEach((r) => {
+      set.add(toApiDate(parseDateInput(r.reservation_date)));
+    });
+    return set;
+  }, [reservations]);
+
+  const loadReservations = useCallback(async () => {
+    try {
+      const list = space === 'bbq' ? await listBbqReservations() : await listHallReservations();
+      setReservations(list);
+    } catch (error) {
+      // Silenciamos a falha aqui pra UI nao quebrar; o composer ainda funciona.
+    }
+  }, [space]);
+
+  const loadUsers = useCallback(async () => {
+    try {
+      const users = await listUsers();
+      const map = new Map<number, User>();
+      users.forEach((u) => map.set(u.id, u));
+      setUsersById(map);
+    } catch (error) {
+      // Lista de usuarios e opcional para o display de nomes.
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReservations();
+  }, [loadReservations]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   useEffect(() => {
     setComposerOpen(false);
@@ -171,11 +218,10 @@ export function NewReservationScreen() {
       return;
     }
 
-    const date = new Date(selectedDay);
-    date.setHours(sh, 0, 0, 0);
     const payload = {
-      reservation_date: date.toISOString(),
-      guest_count: guestCount ? Number(guestCount) : undefined
+      reservation_date: toApiDate(selectedDay),
+      guest_count: guestCount ? Number(guestCount) : undefined,
+      reservation_user: currentUser?.id ?? null
     };
 
     try {
@@ -185,6 +231,7 @@ export function NewReservationScreen() {
       } else {
         await createHallReservation(payload);
       }
+      await loadReservations();
       navigation.goBack();
     } catch (error) {
       Alert.alert('Falha ao reservar', extractErrorMessage(error));
@@ -253,7 +300,7 @@ export function NewReservationScreen() {
         <View style={styles.weekDays}>
           {weekDays.map((day) => {
             const isSelected = sameDay(day, selectedDay);
-            const hasReservations = getMockDayReservations(day, space).length > 0;
+            const hasReservations = reservedDays.has(toApiDate(day));
             return (
               <Pressable
                 key={day.toISOString()}
@@ -339,14 +386,10 @@ export function NewReservationScreen() {
               <View style={styles.rowCopy}>
                 <Text style={styles.rowTitle}>{r.resident}</Text>
                 <View style={styles.metaRow}>
-                  <Ionicons name="time-outline" size={13} color="#8D93A1" />
-                  <Text style={styles.metaText}>
-                    {formatHour(r.startHour)} - {formatHour(r.endHour)}
-                  </Text>
-                </View>
-                <View style={styles.metaRow}>
                   <Ionicons name="people-outline" size={13} color="#8D93A1" />
-                  <Text style={styles.metaText}>{r.guests} pessoas</Text>
+                  <Text style={styles.metaText}>
+                    {r.guests} {r.guests === 1 ? 'pessoa' : 'pessoas'}
+                  </Text>
                 </View>
               </View>
               <View style={[styles.statusChip, styles.statusPending]}>

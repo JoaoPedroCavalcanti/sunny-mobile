@@ -6,6 +6,11 @@ export async function login(username: string, password: string): Promise<TokenPa
   return data;
 }
 
-export async function verifyToken(access: string): Promise<void> {
-  await api.post('/api/token/verify/', { token: access });
+export async function refreshToken(refresh: string): Promise<{ access: string }> {
+  const { data } = await api.post<{ access: string }>('/api/token/refresh/', { refresh });
+  return data;
+}
+
+export async function verifyToken(token: string): Promise<void> {
+  await api.post('/api/token/verify/', { token });
 }

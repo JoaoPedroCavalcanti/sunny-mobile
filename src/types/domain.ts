@@ -1,9 +1,23 @@
+export type Priority = 'low' | 'medium' | 'high';
+
+export type ServiceRequestStatus = 'requested' | 'accepted' | 'declined';
+
+export type CondoPaymentStatus = 'pending' | 'paid' | 'overdue';
+
+export type DeliveryPlatform =
+  | 'ifood'
+  | 'rappi'
+  | 'uber eats'
+  | 'doordash'
+  | 'just eat'
+  | 'other';
+
 export type User = {
   id: number;
   username: string;
-  first_name: string;
-  last_name: string;
-  email: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
   password?: string;
 };
 
@@ -18,14 +32,14 @@ export type VisitorAccess = {
   id: number;
   visitor_name: string;
   host_user: number | null;
-  email: string;
+  email: string | null;
   scheduled_date: string;
   checkin_date_time: string | null;
   checkout_date_time: string | null;
   checkin_code: string;
   checkout_code: string;
   status: string;
-  description: string;
+  description: string | null;
   link_checkin: string | null;
   link_checkout: string | null;
   created_at: string;
@@ -36,25 +50,25 @@ export type ServiceRequest = {
   id: number;
   requester_user: number;
   title: string;
-  request_description: string;
+  request_description: string | null;
   service_type: string;
-  location: string;
-  priority: 'low' | 'medium' | 'high';
+  location: string | null;
+  priority: Priority;
   request_scheduled_date: string;
   created_at: string;
   updated_at: string;
-  status: 'requested' | 'accepted' | 'declined';
-  responsable_staff: string;
+  status: ServiceRequestStatus;
+  responsable_staff: string | null;
   scheduled_date: string | null;
-  more_details: string;
+  more_details: string | null;
 };
 
 export type CondoPayment = {
   id: number;
   payer_user: number;
   title: string;
-  status: 'pending' | 'paid' | 'overdue';
-  description: string;
+  status: CondoPaymentStatus;
+  description: string | null;
   payment_link: string;
   amount: string;
   due_date: string | null;
@@ -66,13 +80,13 @@ export type CondoPayment = {
 export type DeliveryNotification = {
   id: number;
   user_to_delivery: number;
-  title: string;
-  description: string;
-  delivery_platform: string;
-  delivery_from: string;
-  delivery_to: string;
+  title: string | null;
+  description: string | null;
+  delivery_platform: DeliveryPlatform;
+  delivery_from: string | null;
+  delivery_to: string | null;
   created_at: string;
-  priority_level: 'low' | 'medium' | 'high';
+  priority_level: Priority;
 };
 
 export type News = {
@@ -80,7 +94,7 @@ export type News = {
   title: string;
   description: string;
   author: string;
-  priority_level: 'low' | 'medium' | 'high';
+  priority_level: Priority;
   created_at: string;
   updated_at: string;
 };
