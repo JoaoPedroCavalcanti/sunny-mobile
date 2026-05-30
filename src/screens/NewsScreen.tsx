@@ -1,46 +1,105 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppScreen } from '../components/AppScreen';
-import { SectionHeader } from '../components/SectionHeader';
-import { AppCard } from '../components/AppCard';
-import { AppInput } from '../components/AppInput';
-import { AppButton } from '../components/AppButton';
-import {
-  createNews,
-  deleteNews,
-  listNews,
-  patchNews
-} from '../api/news';
-import {
-  getDeliveryNotification,
-  listDeliveryNotifications,
-  sendDeliveryNotification
-} from '../api/deliveryNotifications';
-import type { News, DeliveryNotification } from '../types/domain';
-import { formatDateTime } from '../utils/date';
+import { listNews } from '../api/news';
+import type { News } from '../types/domain';
 import { colors } from '../theme/colors';
-import { extractErrorMessage } from '../utils/extractError';
+import type { MainTabParamList, RootStackParamList } from '../navigation/types';
+
+type Category = 'aviso' | 'manutencao' | 'evento';
+type FilterKey = 'all' | Category;
+
+type CategoryStyle = {
+  label: string;
+  iconName: keyof typeof Ionicons.glyphMap;
+  color: string;
+  bg: string;
+};
+
+const CATEGORY_STYLES: Record<Category, CategoryStyle> = {
+  aviso: {
+    label: 'Aviso',
+    iconName: 'clipboard-outline',
+    color: '#0F7A43',
+    bg: '#EAF5EF'
+  },
+  manutencao: {
+    label: 'Manutencao',
+    iconName: 'megaphone-outline',
+    color: '#CD3131',
+    bg: '#FBE3E3'
+  },
+  evento: {
+    label: 'Evento',
+    iconName: 'calendar-outline',
+    color: '#3B7AC9',
+    bg: '#E5EEF9'
+  }
+};
+
+const FILTERS: Array<{ key: FilterKey; label: string }> = [
+  { key: 'all', label: 'Todos' },
+  { key: 'aviso', label: 'Avisos' },
+  { key: 'manutencao', label: 'Manutencoes' },
+  { key: 'evento', label: 'Eventos' }
+];
+
+function categoryFor(item: News): Category {
+  switch (item.priority_level) {
+    case 'high':
+      return 'manutencao';
+    case 'low':
+      return 'evento';
+    default:
+      return 'aviso';
+  }
+}
+
+function formatNewsDate(value: string) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  const time = new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(d);
+
+  if (target.getTime() === today.getTime()) return `Hoje • ${time}`;
+  if (target.getTime() === yesterday.getTime()) return `Ontem • ${time}`;
+
+  const day = new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit'
+  }).format(d);
+  return `${day} • ${time}`;
+}
+
+type NewsNav = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Comunicados'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 export function NewsScreen() {
-  const [newsList, setNewsList] = useState<News[]>([]);
-  const [deliveryList, setDeliveryList] = useState<DeliveryNotification[]>([]);
+  const navigation = useNavigation<NewsNav>();
+  const [items, setItems] = useState<News[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [newsTitle, setNewsTitle] = useState('');
-  const [newsDescription, setNewsDescription] = useState('');
-  const [newsAuthor, setNewsAuthor] = useState('');
-
-  const [deliveryUserId, setDeliveryUserId] = useState('');
-  const [deliveryTitle, setDeliveryTitle] = useState('');
-  const [deliveryFrom, setDeliveryFrom] = useState('');
+  const [filter, setFilter] = useState<FilterKey>('all');
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [n, d] = await Promise.allSettled([listNews(), listDeliveryNotifications()]);
-
-      if (n.status === 'fulfilled') setNewsList(n.value);
-      if (d.status === 'fulfilled') setDeliveryList(d.value);
+      const data = await listNews();
+      setItems(data);
     } finally {
       setRefreshing(false);
     }
@@ -50,132 +109,208 @@ export function NewsScreen() {
     loadData();
   }, [loadData]);
 
-  async function onCreateNews() {
-    try {
-      await createNews({
-        title: newsTitle,
-        description: newsDescription,
-        author: newsAuthor,
-        priority_level: 'medium'
-      });
-      setNewsTitle('');
-      setNewsDescription('');
-      setNewsAuthor('');
-      await loadData();
-    } catch (error) {
-      Alert.alert('Falha ao criar comunicado', extractErrorMessage(error));
-    }
-  }
+  const filteredItems = useMemo(() => {
+    const sorted = [...items].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    if (filter === 'all') return sorted;
+    return sorted.filter((item) => categoryFor(item) === filter);
+  }, [items, filter]);
 
-  async function onPatchNews(item: News) {
-    try {
-      await patchNews(item.id, { title: `${item.title} (Atualizado)` });
-      await loadData();
-    } catch (error) {
-      Alert.alert('Falha ao editar comunicado', extractErrorMessage(error));
-    }
-  }
-
-  async function onDeleteNews(id: number) {
-    try {
-      await deleteNews(id);
-      await loadData();
-    } catch (error) {
-      Alert.alert('Falha ao excluir comunicado', extractErrorMessage(error));
-    }
-  }
-
-  async function onSendDelivery() {
-    try {
-      const created = await sendDeliveryNotification({
-        user_to_delivery: Number(deliveryUserId),
-        title: deliveryTitle,
-        description: '',
-        delivery_platform: 'ifood',
-        delivery_from: deliveryFrom,
-        delivery_to: '',
-        priority_level: 'medium'
-      });
-
-      const detail = await getDeliveryNotification(created.id);
-      Alert.alert('Notificacao enviada', `Entrega para usuario #${detail.user_to_delivery}`);
-      setDeliveryUserId('');
-      setDeliveryTitle('');
-      setDeliveryFrom('');
-      await loadData();
-    } catch (error) {
-      Alert.alert('Falha ao enviar notificacao', extractErrorMessage(error));
+  function handleBack() {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Home');
     }
   }
 
   return (
     <AppScreen onRefresh={loadData} refreshing={refreshing}>
-      <SectionHeader title="Comunicados" subtitle="Noticias do condominio e notificacoes de entrega" />
+      <View style={styles.header}>
+        <Pressable onPress={handleBack} style={styles.backButton} hitSlop={8}>
+          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Comunicados</Text>
+        <View style={styles.backButton} />
+      </View>
 
-      <AppCard>
-        <Text style={styles.blockTitle}>Novo comunicado</Text>
-        <AppInput label="Titulo" value={newsTitle} onChangeText={setNewsTitle} />
-        <AppInput label="Descricao" value={newsDescription} onChangeText={setNewsDescription} />
-        <AppInput label="Autor" value={newsAuthor} onChangeText={setNewsAuthor} />
-        <AppButton title="Publicar" onPress={onCreateNews} />
-      </AppCard>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsRow}
+      >
+        {FILTERS.map((f) => {
+          const isActive = filter === f.key;
+          return (
+            <Pressable
+              key={f.key}
+              style={styles.tab}
+              onPress={() => setFilter(f.key)}
+              hitSlop={6}
+            >
+              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                {f.label}
+              </Text>
+              <View style={[styles.tabUnderline, isActive && styles.tabUnderlineActive]} />
+            </Pressable>
+          );
+        })}
+      </ScrollView>
 
-      {newsList.map((item) => (
-        <AppCard key={`news-${item.id}`}>
-          <Text style={styles.itemTitle}>{item.title}</Text>
-          <Text style={styles.itemMeta}>{item.author}</Text>
-          <Text style={styles.itemBody}>{item.description}</Text>
-          <View style={styles.row}>
-            <AppButton title="Editar" variant="ghost" onPress={() => onPatchNews(item)} style={styles.action} />
-            <AppButton title="Excluir" variant="danger" onPress={() => onDeleteNews(item.id)} style={styles.action} />
-          </View>
-        </AppCard>
-      ))}
-
-      <AppCard>
-        <Text style={styles.blockTitle}>Notificar entrega (admin)</Text>
-        <AppInput label="ID do usuario" value={deliveryUserId} onChangeText={setDeliveryUserId} keyboardType="number-pad" />
-        <AppInput label="Titulo" value={deliveryTitle} onChangeText={setDeliveryTitle} />
-        <AppInput label="Entrega de" value={deliveryFrom} onChangeText={setDeliveryFrom} />
-        <AppButton title="Enviar notificacao" onPress={onSendDelivery} />
-      </AppCard>
-
-      {deliveryList.map((item) => (
-        <AppCard key={`delivery-${item.id}`}>
-          <Text style={styles.itemTitle}>{item.title}</Text>
-          <Text style={styles.itemMeta}>Usuario #{item.user_to_delivery}</Text>
-          <Text style={styles.itemMeta}>{formatDateTime(item.created_at)}</Text>
-        </AppCard>
-      ))}
+      {filteredItems.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Ionicons name="newspaper-outline" size={26} color="#B6BAC3" />
+          <Text style={styles.emptyText}>Nenhum comunicado por aqui ainda.</Text>
+        </View>
+      ) : (
+        filteredItems.map((item) => {
+          const cat = categoryFor(item);
+          const style = CATEGORY_STYLES[cat];
+          return (
+            <Pressable
+              key={item.id}
+              style={styles.card}
+              onPress={() => Alert.alert(item.title, item.description)}
+            >
+              <View style={[styles.cardIcon, { backgroundColor: style.bg }]}>
+                <Ionicons name={style.iconName} size={22} color={style.color} />
+              </View>
+              <View style={styles.cardCopy}>
+                <View style={styles.cardHeader}>
+                  <Text style={[styles.cardCategory, { color: style.color }]}>
+                    {style.label}
+                  </Text>
+                  <Text style={styles.cardDate}>{formatNewsDate(item.created_at)}</Text>
+                </View>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={styles.cardBody} numberOfLines={2}>
+                  {item.description}
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={colors.textPrimary}
+                style={styles.cardChevron}
+              />
+            </Pressable>
+          );
+        })
+      )}
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  blockTitle: {
-    marginBottom: 10,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  itemTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  itemMeta: {
-    color: colors.textMuted,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 4
   },
-  itemBody: {
+  backButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  headerTitle: {
     color: colors.textPrimary,
-    marginTop: 6
+    fontSize: 17,
+    fontWeight: '800'
   },
-  row: {
-    flexDirection: 'row',
+  tabsRow: {
+    gap: 24,
+    paddingVertical: 4,
+    paddingHorizontal: 2
+  },
+  tab: {
+    alignItems: 'center'
+  },
+  tabLabel: {
+    color: '#9AA0AE',
+    fontSize: 14,
+    fontWeight: '600',
+    paddingBottom: 8
+  },
+  tabLabelActive: {
+    color: colors.primary,
+    fontWeight: '800'
+  },
+  tabUnderline: {
+    height: 2,
+    width: 28,
+    borderRadius: 1,
+    backgroundColor: 'transparent'
+  },
+  tabUnderlineActive: {
+    backgroundColor: colors.primary
+  },
+  emptyCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    marginTop: 10
+    paddingVertical: 36,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF'
   },
-  action: {
-    flex: 1
+  emptyText: {
+    color: colors.textMuted,
+    fontSize: 13
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 14,
+    shadowColor: '#132016',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3
+  },
+  cardIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cardCopy: {
+    flex: 1,
+    gap: 4
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8
+  },
+  cardCategory: {
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  cardDate: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '500'
+  },
+  cardTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  cardBody: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16
+  },
+  cardChevron: {
+    alignSelf: 'center'
   }
 });
