@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { AppScreen } from '../components/AppScreen';
 import { SectionHeader } from '../components/SectionHeader';
 import { AppCard } from '../components/AppCard';
@@ -20,6 +21,7 @@ import { extractErrorMessage } from '../utils/extractError';
 export function FinanceScreen() {
   const [list, setList] = useState<CondoPayment[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const [payerId, setPayerId] = useState('');
   const [title, setTitle] = useState('');
@@ -43,12 +45,22 @@ export function FinanceScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   async function onCreate() {
+    if (!payerId.trim() || !title.trim() || !paymentLink.trim()) {
+      Alert.alert(
+        'Dados incompletos',
+        'Preencha ID do pagador, titulo e link de pagamento.'
+      );
+      return;
+    }
     try {
+      setCreating(true);
       await createCondoPayment({
         payer_user: Number(payerId),
         title,
@@ -56,7 +68,7 @@ export function FinanceScreen() {
         description: '',
         payment_link: paymentLink,
         amount,
-        due_date: dueDate,
+        due_date: dueDate || null,
         payment_date: null
       });
       setPayerId('');
@@ -65,8 +77,11 @@ export function FinanceScreen() {
       setDueDate('');
       setPaymentLink('');
       await loadData();
+      Alert.alert('Cobranca criada', 'A cobranca foi registrada com sucesso.');
     } catch (error) {
       Alert.alert('Falha ao criar pagamento', extractErrorMessage(error));
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -119,7 +134,7 @@ export function FinanceScreen() {
           <View style={styles.action}><AppInput label="Vencimento (AAAA-MM-DD)" value={dueDate} onChangeText={setDueDate} /></View>
         </View>
         <AppInput label="Link de pagamento" value={paymentLink} onChangeText={setPaymentLink} autoCapitalize="none" />
-        <AppButton title="Criar" onPress={onCreate} />
+        <AppButton title="Criar" onPress={onCreate} loading={creating} />
       </AppCard>
 
       {list.map((item) => (

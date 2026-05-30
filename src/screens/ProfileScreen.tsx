@@ -126,6 +126,7 @@ export function ProfileScreen() {
       const updated = await patchMe(payload);
       setUser(updated);
       setEditorOpen(false);
+      Alert.alert('Perfil atualizado', 'Suas informacoes foram salvas com sucesso.');
     } catch (error) {
       Alert.alert('Falha ao atualizar perfil', extractErrorMessage(error));
     } finally {

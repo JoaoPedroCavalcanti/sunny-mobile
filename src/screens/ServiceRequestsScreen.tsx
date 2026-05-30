@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../store/authStore';
 import { AppScreen } from '../components/AppScreen';
 import { SectionHeader } from '../components/SectionHeader';
@@ -23,6 +24,7 @@ export function ServiceRequestsScreen() {
   const { user } = useAuthStore();
   const [list, setList] = useState<ServiceRequest[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
@@ -37,18 +39,25 @@ export function ServiceRequestsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   async function onCreate() {
     if (!user) return;
+    if (!title.trim() || !scheduledDate.trim()) {
+      Alert.alert('Dados incompletos', 'Preencha titulo e data/hora da solicitacao.');
+      return;
+    }
     try {
+      setCreating(true);
       await createServiceRequest({
         requester_user: user.id,
         title,
         request_description: description,
-        service_type: 'Outros',
+        service_type: 'Other',
         location: 'Condominio',
         priority: 'medium',
         request_scheduled_date: scheduledDate,
@@ -61,8 +70,11 @@ export function ServiceRequestsScreen() {
       setDescription('');
       setScheduledDate('');
       await loadData();
+      Alert.alert('Solicitacao criada', 'Sua solicitacao foi enviada com sucesso.');
     } catch (error) {
       Alert.alert('Falha ao criar solicitacao', extractErrorMessage(error));
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -117,7 +129,7 @@ export function ServiceRequestsScreen() {
           value={scheduledDate}
           onChangeText={setScheduledDate}
         />
-        <AppButton title="Criar solicitacao" onPress={onCreate} />
+        <AppButton title="Criar solicitacao" onPress={onCreate} loading={creating} />
       </AppCard>
 
       {list.map((item) => (

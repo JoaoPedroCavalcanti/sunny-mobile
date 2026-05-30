@@ -232,7 +232,12 @@ export function NewReservationScreen() {
         await createHallReservation(payload);
       }
       await loadReservations();
-      navigation.goBack();
+      setComposerOpen(false);
+      Alert.alert(
+        'Reserva enviada',
+        'Sua solicitacao foi registrada com sucesso e esta aguardando aprovacao.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
     } catch (error) {
       Alert.alert('Falha ao reservar', extractErrorMessage(error));
     } finally {

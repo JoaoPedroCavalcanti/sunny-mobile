@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -12,7 +12,7 @@ import {
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp, useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppScreen } from '../components/AppScreen';
@@ -199,9 +199,11 @@ export function VisitorScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const visitorRows = useMemo(() => items.map(toVisitorRow), [items]);
 
@@ -263,6 +265,7 @@ export function VisitorScreen() {
       setComposerOpen(false);
       resetComposer();
       await loadData();
+      Alert.alert('Visitante cadastrado', 'O acesso foi registrado com sucesso.');
     } catch (error) {
       Alert.alert('Falha ao cadastrar', extractErrorMessage(error));
     } finally {
