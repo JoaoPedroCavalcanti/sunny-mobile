@@ -7,7 +7,7 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { ReservationsStack } from './ReservationsStack';
 import { NewsScreen } from '../screens/NewsScreen';
 import { VisitorScreen } from '../screens/VisitorScreen';
-import { ProfileScreen } from '../screens/ProfileScreen';
+import { ProfileStack } from './ProfileStack';
 import type { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -77,7 +77,7 @@ export function MainTabs() {
       <Tab.Screen name="Reservas" component={ReservationsStack} />
       <Tab.Screen name="Comunicados" component={NewsScreen} />
       <Tab.Screen name="Visitantes" component={VisitorScreen} />
-      <Tab.Screen name="Perfil" component={ProfileScreen} />
+      <Tab.Screen name="Perfil" component={ProfileStack} />
     </Tab.Navigator>
   );
 }

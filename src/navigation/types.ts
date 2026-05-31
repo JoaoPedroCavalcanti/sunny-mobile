@@ -12,10 +12,15 @@ export type ReservationsStackParamList = {
   NewReservation: { space?: 'bbq' | 'hall' } | undefined;
 };
 
+export type ProfileStackParamList = {
+  ProfileMenu: undefined;
+  MyData: undefined;
+};
+
 export type MainTabParamList = {
   Home: undefined;
   Reservas: NavigatorScreenParams<ReservationsStackParamList> | undefined;
   Comunicados: undefined;
   Visitantes: undefined;
-  Perfil: undefined;
+  Perfil: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
