@@ -14,20 +14,22 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { login } from '../api/auth';
-import { createUser, getMe } from '../api/users';
+import { getMe } from '../api/users';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
+import type { RootStackParamList } from '../navigation/types';
+
+type LoginNav = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export function LoginScreen() {
   const { setTokens, setUser } = useAuthStore();
+  const navigation = useNavigation<LoginNav>();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [signupMode, setSignupMode] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const motion = useRef(new Animated.Value(0)).current;
@@ -54,23 +56,8 @@ export function LoginScreen() {
     }
   }
 
-  async function onSignup() {
-    try {
-      setLoading(true);
-      await createUser({
-        username,
-        password,
-        first_name: firstName,
-        last_name: lastName,
-        email
-      });
-      Alert.alert('Conta criada', 'Agora voce ja pode entrar.');
-      setSignupMode(false);
-    } catch (error) {
-      Alert.alert('Falha ao criar conta', extractErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
+  function goToSignup() {
+    navigation.navigate('Signup');
   }
 
   const cardStyle = {
@@ -108,40 +95,13 @@ export function LoginScreen() {
               </View>
               <Text style={styles.wordmark}>SUNNYVALE</Text>
               <Text style={styles.wordmarkSub}>CONNECT</Text>
-              <Text style={styles.title}>{signupMode ? 'Criar conta' : 'Bem-vindo(a)'}</Text>
+              <Text style={styles.title}>Bem-vindo(a)</Text>
               <Text style={styles.subtitle}>
-                {signupMode
-                  ? 'Cadastro rapido para acessar seu condominio'
-                  : 'Faca login para acessar seu caroll'}
+                Faca login para acessar seu condominio
               </Text>
             </Animated.View>
 
             <Animated.View style={[styles.card, cardStyle]}>
-              {signupMode ? (
-                <>
-                  <FieldRow
-                    icon="person-outline"
-                    value={firstName}
-                    onChangeText={setFirstName}
-                    placeholder="Nome"
-                  />
-                  <FieldRow
-                    icon="person-outline"
-                    value={lastName}
-                    onChangeText={setLastName}
-                    placeholder="Sobrenome"
-                  />
-                  <FieldRow
-                    icon="mail-outline"
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="E-mail"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                </>
-              ) : null}
-
               <FieldRow
                 icon="person-outline"
                 value={username}
@@ -159,14 +119,12 @@ export function LoginScreen() {
                 onRightIconPress={() => setShowPassword((v) => !v)}
               />
 
-              {!signupMode ? (
-                <Pressable onPress={() => Alert.alert('Em breve', 'Recuperacao de senha em breve.')}>
-                  <Text style={styles.forgotPassword}>Esqueceu sua senha?</Text>
-                </Pressable>
-              ) : null}
+              <Pressable onPress={() => Alert.alert('Em breve', 'Recuperacao de senha em breve.')}>
+                <Text style={styles.forgotPassword}>Esqueceu sua senha?</Text>
+              </Pressable>
 
               <Pressable
-                onPress={signupMode ? onSignup : onLogin}
+                onPress={onLogin}
                 disabled={loading}
                 style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
               >
@@ -177,33 +135,27 @@ export function LoginScreen() {
                   style={styles.primaryButtonGradient}
                 >
                   <Text style={styles.primaryButtonLabel}>
-                    {loading ? 'Carregando...' : signupMode ? 'Criar conta' : 'Entrar'}
+                    {loading ? 'Carregando...' : 'Entrar'}
                   </Text>
                 </LinearGradient>
               </Pressable>
 
-              {!signupMode ? (
-                <>
-                  <View style={styles.dividerRow}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>ou</Text>
-                    <View style={styles.dividerLine} />
-                  </View>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>ou</Text>
+                <View style={styles.dividerLine} />
+              </View>
 
-                  <Pressable
-                    onPress={() => Alert.alert('Em breve', 'Login com biometria em breve.')}
-                    style={({ pressed }) => [styles.biometricsButton, pressed && styles.buttonPressed]}
-                  >
-                    <Ionicons name="finger-print-outline" size={22} color={colors.primary} />
-                    <Text style={styles.biometricsLabel}>Entrar com biometria</Text>
-                  </Pressable>
-                </>
-              ) : null}
+              <Pressable
+                onPress={() => Alert.alert('Em breve', 'Login com biometria em breve.')}
+                style={({ pressed }) => [styles.biometricsButton, pressed && styles.buttonPressed]}
+              >
+                <Ionicons name="finger-print-outline" size={22} color={colors.primary} />
+                <Text style={styles.biometricsLabel}>Entrar com biometria</Text>
+              </Pressable>
 
-              <Pressable onPress={() => setSignupMode((v) => !v)} style={styles.switchRow}>
-                <Text style={styles.switchLabel}>
-                  {signupMode ? 'Ja tem conta? Entrar' : 'Criar conta'}
-                </Text>
+              <Pressable onPress={goToSignup} style={styles.switchRow}>
+                <Text style={styles.switchLabel}>Criar conta</Text>
               </Pressable>
             </Animated.View>
 

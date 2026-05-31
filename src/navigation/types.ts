@@ -2,6 +2,7 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 
 export type RootStackParamList = {
   Login: undefined;
+  Signup: undefined;
   MainTabs: undefined;
   VisitorCheckin: undefined;
   ServiceRequests: undefined;

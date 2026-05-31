@@ -5,9 +5,14 @@ import type { User } from '@/types/domain';
 export type UserCreateInput = {
   username: string;
   password: string;
-  first_name: string;
-  last_name: string;
+  full_name: string;
+  birth_date: string;
+  cpf: string;
+  phone: string;
   email: string;
+  apartment: string;
+  block?: string;
+  photo?: string;
 };
 
 export type UserPatchInput = Partial<{
@@ -16,6 +21,13 @@ export type UserPatchInput = Partial<{
   first_name: string;
   last_name: string;
   email: string;
+  full_name: string;
+  birth_date: string;
+  cpf: string;
+  phone: string;
+  apartment: string;
+  block: string;
+  photo: string;
 }>;
 
 export async function getMe() {

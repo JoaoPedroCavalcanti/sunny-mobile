@@ -33,14 +33,11 @@ type FieldKey =
   | 'apartment'
   | 'block';
 
-type FieldKind = 'remote' | 'local';
-
 type FieldDef = {
   key: FieldKey;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   placeholder: string;
-  kind: FieldKind;
   keyboardType?: 'default' | 'email-address' | 'number-pad' | 'phone-pad';
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 };
@@ -54,7 +51,6 @@ const SECTIONS: Array<{ title: string; fields: FieldDef[] }> = [
         label: 'Nome completo',
         icon: 'person-outline',
         placeholder: 'Seu nome completo',
-        kind: 'remote',
         autoCapitalize: 'words'
       },
       {
@@ -62,7 +58,6 @@ const SECTIONS: Array<{ title: string; fields: FieldDef[] }> = [
         label: 'Data de nascimento',
         icon: 'calendar-outline',
         placeholder: 'DD/MM/AAAA',
-        kind: 'local',
         keyboardType: 'number-pad'
       },
       {
@@ -70,7 +65,6 @@ const SECTIONS: Array<{ title: string; fields: FieldDef[] }> = [
         label: 'CPF',
         icon: 'card-outline',
         placeholder: '000.000.000-00',
-        kind: 'local',
         keyboardType: 'number-pad'
       }
     ]
@@ -83,7 +77,6 @@ const SECTIONS: Array<{ title: string; fields: FieldDef[] }> = [
         label: 'Telefone',
         icon: 'call-outline',
         placeholder: '(00) 00000-0000',
-        kind: 'local',
         keyboardType: 'phone-pad'
       },
       {
@@ -91,7 +84,6 @@ const SECTIONS: Array<{ title: string; fields: FieldDef[] }> = [
         label: 'E-mail',
         icon: 'mail-outline',
         placeholder: 'seu@email.com',
-        kind: 'remote',
         keyboardType: 'email-address',
         autoCapitalize: 'none'
       }
@@ -104,25 +96,59 @@ const SECTIONS: Array<{ title: string; fields: FieldDef[] }> = [
         key: 'apartment',
         label: 'Apartamento/Unidade',
         icon: 'location-outline',
-        placeholder: 'Apartamento 101',
-        kind: 'local'
+        placeholder: 'Apartamento 101'
       },
       {
         key: 'block',
         label: 'Bloco/Torre',
         icon: 'business-outline',
-        placeholder: 'Torre A',
-        kind: 'local'
+        placeholder: 'Torre A'
       }
     ]
   }
 ];
 
-function splitFullName(value: string) {
-  const parts = value.trim().split(/\s+/);
-  if (parts.length === 0) return { first: '', last: '' };
-  const [first, ...rest] = parts;
-  return { first, last: rest.join(' ') };
+const REMOTE_FIELD_MAP: Record<
+  FieldKey,
+  'full_name' | 'birth_date' | 'cpf' | 'phone' | 'email' | 'apartment' | 'block'
+> = {
+  fullName: 'full_name',
+  birthDate: 'birth_date',
+  document: 'cpf',
+  phone: 'phone',
+  email: 'email',
+  apartment: 'apartment',
+  block: 'block'
+};
+
+const LOCAL_FALLBACK_MAP: Partial<Record<FieldKey, 'birthDate' | 'document' | 'phone' | 'apartment' | 'block'>> = {
+  birthDate: 'birthDate',
+  document: 'document',
+  phone: 'phone',
+  apartment: 'apartment',
+  block: 'block'
+};
+
+function formatBirthDateForDisplay(value: string | null | undefined): string {
+  if (!value) return '';
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [, yyyy, mm, dd] = match;
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  return value;
+}
+
+function birthDateToApi(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const display = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (display) {
+    const [, dd, mm, yyyy] = display;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  return null;
 }
 
 export function MyDataScreen() {
@@ -157,13 +183,33 @@ export function MyDataScreen() {
   }
 
   function valueOf(field: FieldDef): string {
+    if (!user) {
+      const localKey = LOCAL_FALLBACK_MAP[field.key];
+      return localKey ? extras[localKey] ?? '' : '';
+    }
     switch (field.key) {
-      case 'fullName':
-        return [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim();
+      case 'fullName': {
+        if (user.full_name) return user.full_name;
+        const composed = [user.first_name, user.last_name]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        return composed;
+      }
       case 'email':
-        return user?.email ?? '';
+        return user.email ?? '';
+      case 'birthDate':
+        return formatBirthDateForDisplay(user.birth_date) || extras.birthDate || '';
+      case 'document':
+        return user.cpf ?? extras.document ?? '';
+      case 'phone':
+        return user.phone ?? extras.phone ?? '';
+      case 'apartment':
+        return user.apartment ?? extras.apartment ?? '';
+      case 'block':
+        return user.block ?? extras.block ?? '';
       default:
-        return extras[field.key] ?? '';
+        return '';
     }
   }
 
@@ -180,29 +226,35 @@ export function MyDataScreen() {
 
   async function saveDraft() {
     if (!editingField) return;
-    const value = draftValue.trim();
+    const rawValue = draftValue.trim();
 
-    if (editingField.kind === 'local') {
-      setExtraField(editingField.key as keyof typeof extras, value);
-      setEditingField(null);
-      setDraftValue('');
+    if (editingField.key === 'email' && !rawValue) {
+      Alert.alert('E-mail invalido', 'Informe um e-mail valido.');
       return;
     }
 
+    let payloadValue: string = rawValue;
+    if (editingField.key === 'birthDate') {
+      const apiDate = birthDateToApi(rawValue);
+      if (apiDate === null) {
+        Alert.alert('Data invalida', 'Informe a data no formato DD/MM/AAAA.');
+        return;
+      }
+      payloadValue = apiDate;
+    }
+
+    const remoteKey = REMOTE_FIELD_MAP[editingField.key];
+
     try {
       setSubmitting(true);
-      if (editingField.key === 'fullName') {
-        const { first, last } = splitFullName(value);
-        const updated = await patchMe({ first_name: first, last_name: last });
-        setUser(updated);
-      } else if (editingField.key === 'email') {
-        if (!value) {
-          Alert.alert('E-mail invalido', 'Informe um e-mail valido.');
-          return;
-        }
-        const updated = await patchMe({ email: value });
-        setUser(updated);
+      const updated = await patchMe({ [remoteKey]: payloadValue });
+      setUser(updated);
+
+      const localKey = LOCAL_FALLBACK_MAP[editingField.key];
+      if (localKey) {
+        setExtraField(localKey, rawValue);
       }
+
       setEditingField(null);
       setDraftValue('');
     } catch (error) {
@@ -307,11 +359,6 @@ export function MyDataScreen() {
                   autoFocus
                   style={styles.formInput}
                 />
-                {editingField.kind === 'local' ? (
-                  <Text style={styles.helperText}>
-                    Esta informacao fica salva apenas neste dispositivo por enquanto.
-                  </Text>
-                ) : null}
               </View>
             ) : null}
 

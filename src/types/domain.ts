@@ -19,6 +19,13 @@ export type User = {
   last_name?: string;
   email?: string;
   password?: string;
+  full_name?: string;
+  birth_date?: string;
+  cpf?: string;
+  phone?: string;
+  apartment?: string;
+  block?: string;
+  photo?: string;
 };
 
 export type Reservation = {
