@@ -14,6 +14,7 @@ import { useProfileExtrasStore } from '../store/profileExtraStore';
 import { AppScreen } from '../components/AppScreen';
 import { colors } from '../theme/colors';
 import { getMe } from '../api/users';
+import { usePermissions } from '../hooks/usePermissions';
 
 type ProfileNav = CompositeNavigationProp<
   NativeStackNavigationProp<ProfileStackParamList, 'ProfileMenu'>,
@@ -43,6 +44,7 @@ export function ProfileScreen() {
   const navigation = useNavigation<ProfileNav>();
   const { user, logout, setUser } = useAuthStore();
   const apartmentExtra = useProfileExtrasStore((state) => state.extras.apartment);
+  const { isAdmin } = usePermissions();
 
   useEffect(() => {
     let mounted = true;
@@ -86,6 +88,10 @@ export function ProfileScreen() {
     navigation.navigate('Casa');
   }
 
+  function openReservationApprovals() {
+    navigation.navigate('ReservationApprovals');
+  }
+
   const menuItems: MenuItem[] = [
     {
       key: 'meus-dados',
@@ -99,6 +105,16 @@ export function ProfileScreen() {
       label: 'Minha casa',
       onPress: openMinhaCasa
     },
+    ...(isAdmin
+      ? [
+          {
+            key: 'aprovacoes-reservas',
+            icon: 'calendar-outline' as const,
+            label: 'Aprovacoes de reservas',
+            onPress: openReservationApprovals
+          }
+        ]
+      : []),
     {
       key: 'notificacoes',
       icon: 'notifications-outline',

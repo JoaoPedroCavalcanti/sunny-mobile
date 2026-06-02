@@ -9,6 +9,7 @@ export type RootStackParamList = {
   VisitorCheckin: undefined;
   ServiceRequests: undefined;
   News: undefined;
+  ReservationApprovals: undefined;
 };
 
 export type ReservationsStackParamList = {

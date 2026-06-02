@@ -8,6 +8,7 @@ import { SignupPendingScreen } from '../screens/SignupPendingScreen';
 import { ServiceRequestsScreen } from '../screens/ServiceRequestsScreen';
 import { VisitorCheckinScreen } from '../screens/VisitorCheckinScreen';
 import { NewsScreen } from '../screens/NewsScreen';
+import { ReservationApprovalsScreen } from '../screens/ReservationApprovalsScreen';
 import type { RootStackParamList } from './types';
 import { useAuthStore } from '../store/authStore';
 import { verifyToken } from '../api/auth';
@@ -77,6 +78,11 @@ export function RootNavigator() {
           <Stack.Screen
             name="News"
             component={NewsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ReservationApprovals"
+            component={ReservationApprovalsScreen}
             options={{ headerShown: false }}
           />
         </>
