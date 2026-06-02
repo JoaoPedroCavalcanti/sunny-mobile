@@ -19,6 +19,7 @@ import { colors } from '../theme/colors';
 import { createUser, type HouseholdRequest } from '../api/users';
 import { searchHouseholds } from '../api/households';
 import { extractErrorMessage } from '../utils/extractError';
+import { brDateToIso, maskBrDate } from '../utils/date';
 import type { Household } from '../types/domain';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -28,16 +29,6 @@ type IconName = keyof typeof Ionicons.glyphMap;
 
 type HouseholdMode = 'new' | 'existing';
 
-const DATE_REGEX = /^(\d{2})\/(\d{2})\/(\d{4})$/;
-
-function formatDateMask(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-  const parts: string[] = [];
-  if (digits.length > 0) parts.push(digits.slice(0, 2));
-  if (digits.length >= 3) parts[1] = digits.slice(2, 4);
-  if (digits.length >= 5) parts[2] = digits.slice(4, 8);
-  return parts.filter(Boolean).join('/');
-}
 
 function formatCpfMask(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 11);
@@ -61,17 +52,6 @@ function formatPhoneMask(value: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
-function birthDateToApi(value: string): string | null {
-  const match = value.match(DATE_REGEX);
-  if (!match) return null;
-  const [, dd, mm, yyyy] = match;
-  const day = Number(dd);
-  const month = Number(mm);
-  const year = Number(yyyy);
-  if (Number.isNaN(day) || Number.isNaN(month) || Number.isNaN(year)) return null;
-  if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900) return null;
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 function householdLabel(h: Household): string {
   return h.block ? `Apto ${h.apartment} • Bloco ${h.block}` : `Apto ${h.apartment}`;
@@ -131,10 +111,10 @@ export function SignupScreen() {
       Alert.alert('Dados incompletos', 'Preencha todos os campos obrigatorios.');
       return;
     }
-    if (!birthDateToApi(birthDate)) {
+    if (!brDateToIso(birthDate)) {
       Alert.alert(
         'Data invalida',
-        'Informe a data de nascimento no formato DD/MM/AAAA.'
+        'Informe a data de nascimento no formato DD-MM-AAAA.'
       );
       return;
     }
@@ -188,11 +168,11 @@ export function SignupScreen() {
   }
 
   async function handleSubmit() {
-    const apiBirthDate = birthDateToApi(birthDate);
+    const apiBirthDate = brDateToIso(birthDate);
     if (!apiBirthDate) {
       Alert.alert(
         'Data invalida',
-        'Informe a data de nascimento no formato DD/MM/AAAA.'
+        'Informe a data de nascimento no formato DD-MM-AAAA.'
       );
       setStep(1);
       return;
@@ -389,8 +369,8 @@ function Step1({
         icon="calendar-outline"
         label="Data de nascimento"
         value={birthDate}
-        onChangeText={(value) => setBirthDate(formatDateMask(value))}
-        placeholder="DD/MM/AAAA"
+        onChangeText={(value) => setBirthDate(maskBrDate(value))}
+        placeholder="DD-MM-AAAA"
         keyboardType="number-pad"
         maxLength={10}
         rightIcon="calendar-outline"

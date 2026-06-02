@@ -20,6 +20,7 @@ import { getMe, patchMe } from '../api/users';
 import { useAuthStore } from '../store/authStore';
 import { useProfileExtrasStore } from '../store/profileExtraStore';
 import { extractErrorMessage } from '../utils/extractError';
+import { brDateToIso, isoDateToBr, maskBrDate } from '../utils/date';
 import type { ProfileStackParamList } from '../navigation/types';
 
 type MyDataNav = NativeStackNavigationProp<ProfileStackParamList, 'MyData'>;
@@ -57,7 +58,7 @@ const SECTIONS: Array<{ title: string; fields: FieldDef[] }> = [
         key: 'birthDate',
         label: 'Data de nascimento',
         icon: 'calendar-outline',
-        placeholder: 'DD/MM/AAAA',
+        placeholder: 'DD-MM-AAAA',
         keyboardType: 'number-pad'
       },
       {
@@ -129,26 +130,10 @@ const LOCAL_FALLBACK_MAP: Partial<Record<FieldKey, 'birthDate' | 'document' | 'p
   block: 'block'
 };
 
-function formatBirthDateForDisplay(value: string | null | undefined): string {
-  if (!value) return '';
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (match) {
-    const [, yyyy, mm, dd] = match;
-    return `${dd}/${mm}/${yyyy}`;
-  }
-  return value;
-}
-
 function birthDateToApi(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return '';
-  const display = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (display) {
-    const [, dd, mm, yyyy] = display;
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  return null;
+  return brDateToIso(trimmed);
 }
 
 export function MyDataScreen() {
@@ -199,7 +184,7 @@ export function MyDataScreen() {
       case 'email':
         return user.email ?? '';
       case 'birthDate':
-        return formatBirthDateForDisplay(user.birth_date) || extras.birthDate || '';
+        return isoDateToBr(user.birth_date) || extras.birthDate || '';
       case 'document':
         return user.cpf ?? extras.document ?? '';
       case 'phone':
@@ -237,7 +222,7 @@ export function MyDataScreen() {
     if (editingField.key === 'birthDate') {
       const apiDate = birthDateToApi(rawValue);
       if (apiDate === null) {
-        Alert.alert('Data invalida', 'Informe a data no formato DD/MM/AAAA.');
+        Alert.alert('Data invalida', 'Informe a data no formato DD-MM-AAAA.');
         return;
       }
       payloadValue = apiDate;
@@ -351,11 +336,18 @@ export function MyDataScreen() {
                 <Text style={styles.formLabel}>{editingField.label}</Text>
                 <TextInput
                   value={draftValue}
-                  onChangeText={setDraftValue}
+                  onChangeText={(value) => {
+                    if (editingField.key === 'birthDate') {
+                      setDraftValue(maskBrDate(value));
+                    } else {
+                      setDraftValue(value);
+                    }
+                  }}
                   placeholder={editingField.placeholder}
                   placeholderTextColor="#B6BAC3"
                   keyboardType={editingField.keyboardType}
                   autoCapitalize={editingField.autoCapitalize}
+                  maxLength={editingField.key === 'birthDate' ? 10 : undefined}
                   autoFocus
                   style={styles.formInput}
                 />

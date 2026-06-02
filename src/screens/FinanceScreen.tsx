@@ -14,7 +14,7 @@ import {
   setPaymentsAsPaid
 } from '../api/payments';
 import type { CondoPayment } from '../types/domain';
-import { formatDate } from '../utils/date';
+import { brDateToIso, formatDate, maskBrDate } from '../utils/date';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
 
@@ -59,6 +59,11 @@ export function FinanceScreen() {
       );
       return;
     }
+    const apiDueDate = dueDate.trim() ? brDateToIso(dueDate.trim()) : null;
+    if (dueDate.trim() && !apiDueDate) {
+      Alert.alert('Data invalida', 'Informe o vencimento no formato DD-MM-AAAA.');
+      return;
+    }
     try {
       setCreating(true);
       await createCondoPayment({
@@ -68,7 +73,7 @@ export function FinanceScreen() {
         description: '',
         payment_link: paymentLink,
         amount,
-        due_date: dueDate || null,
+        due_date: apiDueDate,
         payment_date: null
       });
       setPayerId('');
@@ -131,7 +136,7 @@ export function FinanceScreen() {
         <AppInput label="Titulo" value={title} onChangeText={setTitle} />
         <View style={styles.row}>
           <View style={styles.action}><AppInput label="Valor" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" /></View>
-          <View style={styles.action}><AppInput label="Vencimento (AAAA-MM-DD)" value={dueDate} onChangeText={setDueDate} /></View>
+          <View style={styles.action}><AppInput label="Vencimento (DD-MM-AAAA)" value={dueDate} onChangeText={(v) => setDueDate(maskBrDate(v))} keyboardType="number-pad" /></View>
         </View>
         <AppInput label="Link de pagamento" value={paymentLink} onChangeText={setPaymentLink} autoCapitalize="none" />
         <AppButton title="Criar" onPress={onCreate} loading={creating} />
