@@ -15,6 +15,7 @@ import type { Reservation, ReservationStatus } from '../types/domain';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
 import { parseDateInput } from '../utils/date';
+import { usePermissions } from '../hooks/usePermissions';
 import type { ReservationsStackParamList } from '../navigation/types';
 
 type ReservationTab = 'bbq' | 'hall';
@@ -23,6 +24,7 @@ type ReservationsNav = NativeStackNavigationProp<ReservationsStackParamList, 'Re
 
 export function ReservationsScreen() {
   const navigation = useNavigation<ReservationsNav>();
+  const { isAdmin } = usePermissions();
   const [tab, setTab] = useState<ReservationTab>('bbq');
   const [list, setList] = useState<Reservation[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,6 +47,10 @@ export function ReservationsScreen() {
 
   function openNewReservation() {
     navigation.navigate('NewReservation', { space: tab });
+  }
+
+  function openNewReservationForResident() {
+    navigation.navigate('NewReservation', { space: tab, openUserPicker: true });
   }
 
   async function removeReservation(id: number) {
@@ -138,6 +144,24 @@ export function ReservationsScreen() {
         </View>
         <Text style={styles.newReservationText}>Fazer nova reserva</Text>
       </Pressable>
+
+      {isAdmin ? (
+        <Pressable
+          style={styles.adminReservationCta}
+          onPress={openNewReservationForResident}
+        >
+          <View style={styles.adminReservationIcon}>
+            <Ionicons name="people-outline" size={18} color={colors.primary} />
+          </View>
+          <View style={styles.adminReservationCopy}>
+            <Text style={styles.adminReservationTitle}>Reservar para morador</Text>
+            <Text style={styles.adminReservationSubtitle}>
+              Crie uma reserva em nome de um morador
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+        </Pressable>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Proximas reservas</Text>
 
@@ -487,6 +511,43 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700'
+  },
+  adminReservationCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#D7E7DC',
+    shadowColor: '#132016',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2
+  },
+  adminReservationIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#EAF5EF',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  adminReservationCopy: {
+    flex: 1,
+    gap: 2
+  },
+  adminReservationTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  adminReservationSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12
   },
   sectionTitle: {
     color: colors.textPrimary,

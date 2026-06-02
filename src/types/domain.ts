@@ -217,3 +217,10 @@ export type MembershipDecision = {
   reason: string;
   created_at: string;
 };
+
+export type AdminDashboardOverview = {
+  active_residents: number;
+  total_reservations: number;
+  pending_reservations: number;
+  published_news: number;
+};

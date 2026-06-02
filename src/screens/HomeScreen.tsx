@@ -22,6 +22,8 @@ import { listServiceRequests } from '../api/serviceRequests';
 import { formatDateTime } from '../utils/date';
 import { colors } from '../theme/colors';
 import { useAuthStore } from '../store/authStore';
+import { usePermissions } from '../hooks/usePermissions';
+import { AdminHomeScreen } from './AdminHomeScreen';
 import type { MainTabParamList, RootStackParamList } from '../navigation/types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -74,6 +76,14 @@ const HERO_SLIDES: HeroSlide[] = [
 const HERO_AUTOPLAY_MS = 8000;
 
 export function HomeScreen() {
+  const { isAdmin } = usePermissions();
+  if (isAdmin) {
+    return <AdminHomeScreen />;
+  }
+  return <ResidentHomeScreen />;
+}
+
+function ResidentHomeScreen() {
   const navigation = useNavigation<HomeNav>();
   const user = useAuthStore((state) => state.user);
   const [refreshing, setRefreshing] = useState(false);

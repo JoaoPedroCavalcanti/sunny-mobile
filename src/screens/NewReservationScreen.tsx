@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 const SHEET_MIN_HEIGHT = Math.round(Dimensions.get('window').height * 0.5);
+const PICKER_MAX_HEIGHT = Math.round(Dimensions.get('window').height * 0.75);
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -25,11 +26,13 @@ import {
   listHallReservations,
   type ReservationInput
 } from '../api/reservations';
+import { listUsers } from '../api/users';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
 import { parseDateInput, toApiDate } from '../utils/date';
+import { usePermissions } from '../hooks/usePermissions';
 import type { ReservationsStackParamList } from '../navigation/types';
-import type { Reservation, ReservationStatus } from '../types/domain';
+import type { Reservation, ReservationStatus, User } from '../types/domain';
 
 type SpaceType = 'bbq' | 'hall';
 
@@ -95,6 +98,17 @@ function getInitials(name: string) {
     .join('');
 }
 
+function getUserDisplayName(u: User) {
+  return u.full_name?.trim() || u.username;
+}
+
+function getUserApartmentLabel(u: User): string | null {
+  const apt = u.apartment?.trim();
+  if (!apt) return null;
+  const block = u.block?.trim();
+  return block ? `Apto ${apt}/${block}` : `Apto ${apt}`;
+}
+
 function isSameApiDay(reservationDate: string, day: Date) {
   return toApiDate(parseDateInput(reservationDate)) === toApiDate(day);
 }
@@ -151,7 +165,9 @@ type NewReservationRouteProp = RouteProp<ReservationsStackParamList, 'NewReserva
 export function NewReservationScreen() {
   const navigation = useNavigation<NewReservationNav>();
   const route = useRoute<NewReservationRouteProp>();
+  const { isAdmin } = usePermissions();
   const initialSpace = route.params?.space ?? 'bbq';
+  const initialOpenUserPicker = route.params?.openUserPicker ?? false;
 
   const [space, setSpace] = useState<SpaceType>(initialSpace);
   const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date()));
@@ -162,6 +178,12 @@ export function NewReservationScreen() {
   const [guestCount, setGuestCount] = useState('');
   const [loading, setLoading] = useState(false);
   const [reservations, setReservations] = useState<Reservation[]>([]);
+
+  const [residents, setResidents] = useState<User[]>([]);
+  const [loadingResidents, setLoadingResidents] = useState(false);
+  const [targetUser, setTargetUser] = useState<User | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(initialOpenUserPicker && isAdmin);
+  const [pickerSearch, setPickerSearch] = useState('');
 
   const weekDays = useMemo(
     () => Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i)),
@@ -198,6 +220,41 @@ export function NewReservationScreen() {
     setComposerOpen(false);
   }, [selectedDay, space]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingResidents(true);
+        const list = await listUsers({ role: 'RESIDENT' });
+        if (!cancelled) {
+          const sorted = [...list].sort((a, b) =>
+            getUserDisplayName(a).localeCompare(getUserDisplayName(b), 'pt-BR')
+          );
+          setResidents(sorted);
+        }
+      } catch (error) {
+        // Ignoramos: o admin ainda consegue reservar pra si mesmo.
+      } finally {
+        if (!cancelled) setLoadingResidents(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
+  const filteredResidents = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase();
+    if (!q) return residents;
+    return residents.filter((u) => {
+      const name = getUserDisplayName(u).toLowerCase();
+      const apt = getUserApartmentLabel(u)?.toLowerCase() ?? '';
+      const username = u.username.toLowerCase();
+      return name.includes(q) || apt.includes(q) || username.includes(q);
+    });
+  }, [residents, pickerSearch]);
+
   const selectedLabel = useMemo(() => {
     const weekday = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' })
       .format(selectedDay)
@@ -227,6 +284,9 @@ export function NewReservationScreen() {
     // reserva sem janela especifica (e respeitar as combinacoes validas).
     if (sh > 0) payload.start_time = `${String(sh).padStart(2, '0')}:00`;
     if (eh < 24) payload.end_time = `${String(eh).padStart(2, '0')}:00`;
+    if (isAdmin && targetUser) {
+      payload.reservation_user = targetUser.id;
+    }
 
     try {
       setLoading(true);
@@ -237,11 +297,13 @@ export function NewReservationScreen() {
       }
       await loadReservations();
       setComposerOpen(false);
-      Alert.alert(
-        'Reserva enviada',
-        'Sua solicitacao foi registrada com sucesso e esta aguardando aprovacao.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      const successMessage =
+        isAdmin && targetUser
+          ? `Reserva criada para ${getUserDisplayName(targetUser)}.`
+          : 'Sua solicitacao foi registrada com sucesso e esta aguardando aprovacao.';
+      Alert.alert('Reserva enviada', successMessage, [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
     } catch (error) {
       Alert.alert('Falha ao reservar', extractErrorMessage(error));
     } finally {
@@ -440,6 +502,46 @@ export function NewReservationScreen() {
 
       <Text style={styles.sectionTitle}>Fazer nova solicitacao</Text>
 
+      {isAdmin ? (
+        <Pressable
+          style={styles.targetCard}
+          onPress={() => {
+            setPickerSearch('');
+            setPickerOpen(true);
+          }}
+        >
+          <View style={styles.targetIconWrap}>
+            <Ionicons
+              name={targetUser ? 'person' : 'person-outline'}
+              size={18}
+              color={colors.primary}
+            />
+          </View>
+          <View style={styles.targetCopy}>
+            <Text style={styles.targetEyebrow}>Reservar para</Text>
+            <Text style={styles.targetTitle} numberOfLines={1}>
+              {targetUser ? getUserDisplayName(targetUser) : 'Eu mesmo'}
+            </Text>
+            <Text style={styles.targetSubtitle} numberOfLines={1}>
+              {targetUser
+                ? getUserApartmentLabel(targetUser) ?? `@${targetUser.username}`
+                : 'Toque para escolher um morador'}
+            </Text>
+          </View>
+          {targetUser ? (
+            <Pressable
+              hitSlop={8}
+              style={styles.targetClear}
+              onPress={() => setTargetUser(null)}
+            >
+              <Ionicons name="close" size={16} color={colors.textPrimary} />
+            </Pressable>
+          ) : (
+            <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
+          )}
+        </Pressable>
+      ) : null}
+
       <Pressable style={styles.ctaCard} onPress={() => setComposerOpen(true)}>
         <View style={styles.ctaIcon}>
           <Ionicons name={space === 'bbq' ? 'flame' : 'business'} size={22} color="#FFFFFF" />
@@ -489,6 +591,14 @@ export function NewReservationScreen() {
                   <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
                   <Text style={styles.sheetSubtitle}>{selectedLabel}</Text>
                 </View>
+                {isAdmin ? (
+                  <View style={styles.sheetDateRow}>
+                    <Ionicons name="person-outline" size={12} color={colors.textMuted} />
+                    <Text style={styles.sheetSubtitle} numberOfLines={1}>
+                      Para: {targetUser ? getUserDisplayName(targetUser) : 'Eu mesmo'}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
               <Pressable
                 onPress={() => setComposerOpen(false)}
@@ -593,6 +703,135 @@ export function NewReservationScreen() {
                 ) : null}
               </Pressable>
             </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.sheetWrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)} />
+          <View style={[styles.sheet, styles.pickerSheet]}>
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetSpaceIcon}>
+                <Ionicons name="people-outline" size={26} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sheetEyebrow}>Reservar para</Text>
+                <Text style={styles.sheetSpaceName}>Escolha um morador</Text>
+                <Text style={styles.sheetSubtitle}>
+                  {residents.length} {residents.length === 1 ? 'morador' : 'moradores'} cadastrados
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setPickerOpen(false)}
+                hitSlop={8}
+                style={styles.sheetCloseButton}
+              >
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.searchField}>
+              <Ionicons name="search" size={16} color="#8D93A1" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar por nome ou apartamento"
+                placeholderTextColor="#B6BAC3"
+                value={pickerSearch}
+                onChangeText={setPickerSearch}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {pickerSearch.length > 0 ? (
+                <Pressable hitSlop={8} onPress={() => setPickerSearch('')}>
+                  <Ionicons name="close-circle" size={16} color="#B6BAC3" />
+                </Pressable>
+              ) : null}
+            </View>
+
+            <ScrollView
+              style={styles.pickerList}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Pressable
+                style={[
+                  styles.pickerRow,
+                  targetUser === null && styles.pickerRowSelected
+                ]}
+                onPress={() => {
+                  setTargetUser(null);
+                  setPickerOpen(false);
+                }}
+              >
+                <View style={styles.pickerAvatar}>
+                  <Ionicons name="person" size={16} color={colors.primary} />
+                </View>
+                <View style={styles.pickerCopy}>
+                  <Text style={styles.pickerName}>Eu mesmo</Text>
+                  <Text style={styles.pickerMeta}>Reservar em meu nome</Text>
+                </View>
+                {targetUser === null ? (
+                  <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                ) : null}
+              </Pressable>
+
+              {loadingResidents ? (
+                <Text style={styles.pickerEmpty}>Carregando moradores...</Text>
+              ) : filteredResidents.length === 0 ? (
+                <Text style={styles.pickerEmpty}>
+                  {residents.length === 0
+                    ? 'Nenhum morador cadastrado.'
+                    : 'Nenhum morador encontrado.'}
+                </Text>
+              ) : (
+                filteredResidents.map((u) => {
+                  const selected = targetUser?.id === u.id;
+                  const apt = getUserApartmentLabel(u);
+                  return (
+                    <Pressable
+                      key={u.id}
+                      style={[styles.pickerRow, selected && styles.pickerRowSelected]}
+                      onPress={() => {
+                        setTargetUser(u);
+                        setPickerOpen(false);
+                      }}
+                    >
+                      <View style={styles.pickerAvatar}>
+                        <Text style={styles.pickerAvatarText}>
+                          {getInitials(getUserDisplayName(u))}
+                        </Text>
+                      </View>
+                      <View style={styles.pickerCopy}>
+                        <Text style={styles.pickerName} numberOfLines={1}>
+                          {getUserDisplayName(u)}
+                        </Text>
+                        <Text style={styles.pickerMeta} numberOfLines={1}>
+                          {apt ?? `@${u.username}`}
+                        </Text>
+                      </View>
+                      {selected ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={20}
+                          color={colors.primary}
+                        />
+                      ) : null}
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1213,5 +1452,121 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14
+  },
+  targetCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E4E8E6',
+    shadowColor: '#132016',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2
+  },
+  targetIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#F2F7F2',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  targetCopy: {
+    flex: 1
+  },
+  targetEyebrow: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase'
+  },
+  targetTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: 2
+  },
+  targetSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2
+  },
+  targetClear: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F4F6F5',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  pickerSheet: {
+    maxHeight: PICKER_MAX_HEIGHT
+  },
+  searchField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F4F6F5',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 14,
+    paddingVertical: 0
+  },
+  pickerList: {
+    flexGrow: 0
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12
+  },
+  pickerRowSelected: {
+    backgroundColor: '#EAF5EF'
+  },
+  pickerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F2F7F2',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  pickerAvatarText: {
+    color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 12
+  },
+  pickerCopy: {
+    flex: 1
+  },
+  pickerName: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  pickerMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2
+  },
+  pickerEmpty: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 24
   }
 });

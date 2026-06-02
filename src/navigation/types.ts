@@ -1,5 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
-import type { HouseholdMembership } from '../types/domain';
+import type { HouseholdMembership, UserRole } from '../types/domain';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -10,11 +10,15 @@ export type RootStackParamList = {
   ServiceRequests: undefined;
   News: undefined;
   ReservationApprovals: undefined;
+  Users: { initialRole?: UserRole | 'all' } | undefined;
+  UserDetails: { userId: number };
 };
 
 export type ReservationsStackParamList = {
   ReservationsList: undefined;
-  NewReservation: { space?: 'bbq' | 'hall' } | undefined;
+  NewReservation:
+    | { space?: 'bbq' | 'hall'; openUserPicker?: boolean }
+    | undefined;
 };
 
 export type ProfileStackParamList = {

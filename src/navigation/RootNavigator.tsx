@@ -9,6 +9,8 @@ import { ServiceRequestsScreen } from '../screens/ServiceRequestsScreen';
 import { VisitorCheckinScreen } from '../screens/VisitorCheckinScreen';
 import { NewsScreen } from '../screens/NewsScreen';
 import { ReservationApprovalsScreen } from '../screens/ReservationApprovalsScreen';
+import { UsersScreen } from '../screens/UsersScreen';
+import { UserDetailsScreen } from '../screens/UserDetailsScreen';
 import type { RootStackParamList } from './types';
 import { useAuthStore } from '../store/authStore';
 import { verifyToken } from '../api/auth';
@@ -83,6 +85,16 @@ export function RootNavigator() {
           <Stack.Screen
             name="ReservationApprovals"
             component={ReservationApprovalsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Users"
+            component={UsersScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="UserDetails"
+            component={UserDetailsScreen}
             options={{ headerShown: false }}
           />
         </>
