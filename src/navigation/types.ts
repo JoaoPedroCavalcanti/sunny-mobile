@@ -8,6 +8,8 @@ export type RootStackParamList = {
   MainTabs: undefined;
   VisitorCheckin: undefined;
   ServiceRequests: undefined;
+  NewServiceRequest: undefined;
+  ServiceRequestDetails: { requestId: number };
   News: undefined;
   ReservationApprovals: undefined;
   Users: { initialRole?: UserRole | 'all' } | undefined;

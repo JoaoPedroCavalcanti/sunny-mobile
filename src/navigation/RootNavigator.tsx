@@ -6,6 +6,8 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { SignupPendingScreen } from '../screens/SignupPendingScreen';
 import { ServiceRequestsScreen } from '../screens/ServiceRequestsScreen';
+import { NewServiceRequestScreen } from '../screens/NewServiceRequestScreen';
+import { ServiceRequestDetailsScreen } from '../screens/ServiceRequestDetailsScreen';
 import { VisitorCheckinScreen } from '../screens/VisitorCheckinScreen';
 import { NewsScreen } from '../screens/NewsScreen';
 import { ReservationApprovalsScreen } from '../screens/ReservationApprovalsScreen';
@@ -75,7 +77,17 @@ export function RootNavigator() {
           <Stack.Screen
             name="ServiceRequests"
             component={ServiceRequestsScreen}
-            options={{ title: 'Solicitacoes' }}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="NewServiceRequest"
+            component={NewServiceRequestScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ServiceRequestDetails"
+            component={ServiceRequestDetailsScreen}
+            options={{ headerShown: false }}
           />
           <Stack.Screen
             name="News"

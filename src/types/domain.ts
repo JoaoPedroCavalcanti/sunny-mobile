@@ -1,6 +1,22 @@
 export type Priority = 'low' | 'medium' | 'high';
 
-export type ServiceRequestStatus = 'requested' | 'accepted' | 'declined';
+export type ServiceRequestPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export type ServiceRequestStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'DECLINED'
+  | 'COMPLETED';
+
+export type ServiceType =
+  | 'CLEANING'
+  | 'MAINTENANCE'
+  | 'PLUMBING'
+  | 'ELECTRICAL'
+  | 'SECURITY'
+  | 'LANDSCAPING'
+  | 'PEST_CONTROL'
+  | 'OTHER';
 
 export type CondoPaymentStatus = 'pending' | 'paid' | 'overdue';
 
@@ -87,21 +103,31 @@ export type VisitorAccess = {
   updated_at: string;
 };
 
+export type ServiceRequestParty = {
+  id?: number | null;
+  username?: string | null;
+  full_name?: string | null;
+  email?: string | null;
+  apartment?: string | null;
+  block?: string | null;
+  [key: string]: unknown;
+};
+
 export type ServiceRequest = {
   id: number;
-  requester_user: number;
   title: string;
-  request_description: string | null;
-  service_type: string;
-  location: string | null;
-  priority: Priority;
-  request_scheduled_date: string;
+  description: string;
+  service_type: ServiceType;
+  location: string;
+  priority: ServiceRequestPriority;
+  status: ServiceRequestStatus;
+  request_scheduled_date: string | null;
+  admin_response: string;
+  responded_by: ServiceRequestParty | null;
+  responded_at: string | null;
+  requester: ServiceRequestParty | null;
   created_at: string;
   updated_at: string;
-  status: ServiceRequestStatus;
-  responsable_staff: string | null;
-  scheduled_date: string | null;
-  more_details: string | null;
 };
 
 export type CondoPayment = {

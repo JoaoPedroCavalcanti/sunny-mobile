@@ -120,7 +120,7 @@ export function AdminHomeScreen() {
         setNewsTotal(overview.published_news);
       }
 
-      setPendingRequests(requests.filter((r) => r.status === 'requested').length);
+      setPendingRequests(requests.filter((r) => r.status === 'PENDING').length);
       setPendingInvites(invites.length);
 
       const bbqToday = bbq.filter((r) => isToday(r.reservation_date));

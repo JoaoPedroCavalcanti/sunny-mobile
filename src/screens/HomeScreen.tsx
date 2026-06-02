@@ -147,7 +147,7 @@ function ResidentHomeScreen() {
           'Acompanhe avisos importantes, reservas e atualizacoes do condominio por aqui.',
         nextVisitor: firstVisitor?.visitor_name,
         nextVisitorTime: firstVisitor?.scheduled_date,
-        openRequests: requests.filter((r) => r.status === 'requested').length,
+        openRequests: requests.filter((r) => r.status === 'PENDING').length,
         pendingPayments: payments.filter((p) => p.status === 'pending').length
       });
     } finally {
@@ -177,14 +177,14 @@ function ResidentHomeScreen() {
       onPress: () => navigation.navigate('News')
     },
     {
-      label: 'Churrasqueira',
-      icon: 'flame-outline' as const,
+      label: 'Reservas',
+      icon: 'calendar-outline' as const,
       onPress: () => navigation.navigate('Reservas')
     },
     {
-      label: 'Salao de festas',
-      icon: 'business-outline' as const,
-      onPress: () => navigation.navigate('Reservas')
+      label: 'Solicitacoes',
+      icon: 'construct-outline' as const,
+      onPress: () => navigation.navigate('ServiceRequests')
     },
     {
       label: 'Visitantes',
