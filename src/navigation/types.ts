@@ -25,6 +25,7 @@ export type CasaStackParamList = {
   CasaMenu: undefined;
   Members: undefined;
   MemberDetails: { membership: HouseholdMembership };
+  PendingApprovals: undefined;
 };
 
 export type MainTabParamList = {

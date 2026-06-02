@@ -8,16 +8,31 @@ import {
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import {
+  CompositeNavigationProp,
+  useFocusEffect,
+  useNavigation
+} from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { AppScreen } from '../components/AppScreen';
 import { colors } from '../theme/colors';
-import { listHouseholds } from '../api/households';
+import {
+  leaveHousehold,
+  listHouseholds,
+  listPendingApprovals
+} from '../api/households';
 import { extractErrorMessage } from '../utils/extractError';
-import type { Household, HouseholdStatus } from '../types/domain';
-import type { CasaStackParamList } from '../navigation/types';
+import type { Household } from '../types/domain';
+import type {
+  CasaStackParamList,
+  MainTabParamList
+} from '../navigation/types';
 
-type Nav = NativeStackNavigationProp<CasaStackParamList, 'CasaMenu'>;
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<CasaStackParamList, 'CasaMenu'>,
+  BottomTabNavigationProp<MainTabParamList, 'Casa'>
+>;
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -25,32 +40,20 @@ type MenuItem = {
   key: string;
   icon: IconName;
   label: string;
-  description?: string;
+  description: string;
   badge?: string;
+  destructive?: boolean;
   onPress: () => void;
-  disabled?: boolean;
 };
-
-type StatusConfig = { label: string; color: string; bg: string };
-
-function statusConfig(status: HouseholdStatus): StatusConfig {
-  switch (status) {
-    case 'ACTIVE':
-      return { label: 'Ativo', color: colors.primaryDark, bg: '#DCEBDF' };
-    case 'PENDING_ADMIN':
-      return { label: 'Aguardando aprovacao', color: colors.warning, bg: '#FFF1D6' };
-    case 'ARCHIVED':
-    default:
-      return { label: 'Arquivado', color: colors.textMuted, bg: '#EAECEE' };
-  }
-}
 
 export function MinhaCasaScreen() {
   const navigation = useNavigation<Nav>();
   const [household, setHousehold] = useState<Household | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
   const load = useCallback(
     async (mode: 'initial' | 'refresh' = 'initial') => {
@@ -58,10 +61,16 @@ export function MinhaCasaScreen() {
       else setRefreshing(true);
       setError(null);
       try {
-        const results = await listHouseholds();
+        const [houseResults, pendingResults] = await Promise.all([
+          listHouseholds(),
+          listPendingApprovals().catch(() => [])
+        ]);
         const active =
-          results.find((h) => h.status === 'ACTIVE') ?? results[0] ?? null;
+          houseResults.find((h) => h.status === 'ACTIVE') ??
+          houseResults[0] ??
+          null;
         setHousehold(active);
+        setPendingCount(pendingResults.length);
       } catch (e) {
         setError(extractErrorMessage(e));
       } finally {
@@ -76,59 +85,106 @@ export function MinhaCasaScreen() {
     load('initial');
   }, [load]);
 
-  const activeMembersCount =
-    household?.members?.filter((m) => m.status === 'ACTIVE').length ?? 0;
+  useFocusEffect(
+    useCallback(() => {
+      load('refresh');
+    }, [load])
+  );
+
+  function handleBack() {
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Home');
+  }
+
+  function openDetails() {
+    Alert.alert('Detalhes da unidade', 'Funcionalidade em desenvolvimento. Em breve!');
+  }
 
   function openMembers() {
     navigation.navigate('Members');
   }
 
-  function comingSoon(title: string) {
-    return () => Alert.alert(title, 'Funcionalidade em desenvolvimento. Em breve!');
+  function openPendingApprovals() {
+    navigation.navigate('PendingApprovals');
   }
 
-  const menuItems: MenuItem[] = [
-    {
-      key: 'moradores',
-      icon: 'people-outline',
-      label: 'Moradores',
-      description: 'Veja quem mora com voce, papeis e datas de entrada.',
-      badge: activeMembersCount > 0 ? String(activeMembersCount) : undefined,
-      onPress: openMembers
-    },
-    {
-      key: 'dependentes',
-      icon: 'happy-outline',
-      label: 'Dependentes',
-      description: 'Filhos e familiares sem conta no app.',
-      onPress: comingSoon('Dependentes'),
-      disabled: true
-    },
-    {
-      key: 'convites',
-      icon: 'mail-open-outline',
-      label: 'Convites pendentes',
-      description: 'Solicitacoes de entrada na unidade.',
-      onPress: comingSoon('Convites pendentes'),
-      disabled: true
-    },
-    {
-      key: 'sair-unidade',
-      icon: 'log-out-outline',
-      label: 'Sair da unidade',
-      description: 'Encerra o seu vinculo com esse apartamento.',
-      onPress: comingSoon('Sair da unidade'),
-      disabled: true
-    }
-  ];
+  function openReservations() {
+    navigation.navigate('Reservas');
+  }
+
+  async function confirmLeave() {
+    if (!household) return;
+    Alert.alert(
+      'Sair da unidade',
+      'Tem certeza que deseja sair desta unidade? Voce perdera o acesso aos servicos do condominio.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sair',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLeaving(true);
+              await leaveHousehold(household.id);
+              setHousehold(null);
+              setPendingCount(0);
+            } catch (e) {
+              Alert.alert('Falha ao sair', extractErrorMessage(e));
+            } finally {
+              setLeaving(false);
+            }
+          }
+        }
+      ]
+    );
+  }
+
+  const menuItems: MenuItem[] = household
+    ? [
+        {
+          key: 'moradores',
+          icon: 'people-outline',
+          label: 'Moradores',
+          description: 'Veja e gerencie os moradores da sua unidade.',
+          onPress: openMembers
+        },
+        {
+          key: 'pendentes',
+          icon: 'mail-outline',
+          label: 'Convites pendentes',
+          description: 'Aprove ou recuse solicitacoes para fazer parte da unidade.',
+          badge: pendingCount > 0 ? String(pendingCount) : undefined,
+          onPress: openPendingApprovals
+        },
+        {
+          key: 'reservas',
+          icon: 'calendar-outline',
+          label: 'Reservas',
+          description: 'Acompanhe e gerencie suas reservas das areas comuns.',
+          onPress: openReservations
+        },
+        {
+          key: 'sair',
+          icon: 'exit-outline',
+          label: 'Sair da unidade',
+          description: 'Remover voce desta unidade.',
+          destructive: true,
+          onPress: confirmLeave
+        }
+      ]
+    : [];
 
   return (
     <AppScreen onRefresh={() => load('refresh')} refreshing={refreshing}>
       <View style={styles.header}>
-        <View style={styles.headerSide} />
-        <Text style={styles.headerTitle}>Minha casa</Text>
+        <Pressable onPress={handleBack} style={styles.headerSide} hitSlop={8}>
+          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Minha unidade</Text>
         <View style={styles.headerSide} />
       </View>
+
+      <Text style={styles.subtitle}>Gerencie sua unidade e quem tem acesso a ela.</Text>
 
       {loading ? (
         <View style={styles.centerState}>
@@ -145,22 +201,39 @@ export function MinhaCasaScreen() {
       ) : !household ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Ionicons name="home-outline" size={26} color={colors.primary} />
+            <Ionicons name="business-outline" size={26} color={colors.primary} />
           </View>
-          <Text style={styles.emptyTitle}>Sem apartamento ativo</Text>
+          <Text style={styles.emptyTitle}>Sem unidade ativa</Text>
           <Text style={styles.emptyMessage}>
-            Voce ainda nao esta vinculado(a) a um apartamento.
+            Voce ainda nao esta vinculado(a) a uma unidade.
           </Text>
         </View>
       ) : (
         <>
-          <HeroCard household={household} membersCount={activeMembersCount} />
+          <Pressable style={styles.unitCard} onPress={openDetails}>
+            <View style={styles.unitIcon}>
+              <Ionicons name="business" size={28} color={colors.primary} />
+            </View>
+            <View style={styles.unitCopy}>
+              <Text style={styles.unitTitle}>
+                Apartamento {household.apartment}
+              </Text>
+              {household.block ? (
+                <Text style={styles.unitSubtitle}>Bloco {household.block}</Text>
+              ) : null}
+              <View style={styles.unitLinkRow}>
+                <Text style={styles.unitLink}>Ver detalhes da unidade</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+              </View>
+            </View>
+          </Pressable>
 
           <View style={styles.menuCard}>
             {menuItems.map((item, idx) => (
               <Pressable
                 key={item.key}
                 onPress={item.onPress}
+                disabled={leaving && item.destructive}
                 style={[
                   styles.menuItem,
                   idx !== menuItems.length - 1 && styles.menuItemDivider
@@ -169,85 +242,65 @@ export function MinhaCasaScreen() {
                 <View
                   style={[
                     styles.menuIconWrap,
-                    item.disabled && styles.menuIconWrapDisabled
+                    item.destructive && styles.menuIconWrapDanger
                   ]}
                 >
                   <Ionicons
                     name={item.icon}
                     size={20}
-                    color={item.disabled ? colors.textMuted : colors.primary}
+                    color={item.destructive ? colors.danger : colors.primary}
                   />
                 </View>
                 <View style={styles.menuCopy}>
-                  <View style={styles.menuLabelRow}>
-                    <Text
-                      style={[
-                        styles.menuLabel,
-                        item.disabled && styles.menuLabelDisabled
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                    {item.badge ? (
-                      <View style={styles.menuBadge}>
-                        <Text style={styles.menuBadgeText}>{item.badge}</Text>
-                      </View>
-                    ) : null}
-                    {item.disabled ? (
-                      <View style={styles.soonBadge}>
-                        <Text style={styles.soonBadgeText}>Em breve</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  {item.description ? (
-                    <Text style={styles.menuDescription} numberOfLines={2}>
-                      {item.description}
-                    </Text>
-                  ) : null}
+                  <Text
+                    style={[
+                      styles.menuLabel,
+                      item.destructive && styles.menuLabelDanger
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  <Text style={styles.menuDescription} numberOfLines={2}>
+                    {item.description}
+                  </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#B6BAC3" />
+                {item.badge ? (
+                  <View style={styles.menuBadge}>
+                    <Text style={styles.menuBadgeText}>{item.badge}</Text>
+                  </View>
+                ) : null}
+                {leaving && item.destructive ? (
+                  <ActivityIndicator color={colors.danger} />
+                ) : (
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={item.destructive ? colors.danger : '#B6BAC3'}
+                  />
+                )}
               </Pressable>
             ))}
+          </View>
+
+          <View style={styles.noticeBox}>
+            <View style={styles.noticeIcon}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={20}
+                color={colors.primaryDark}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.noticeTitle}>Seguranca em primeiro lugar</Text>
+              <Text style={styles.noticeText}>
+                Somente moradores aprovados tem acesso aos servicos e areas do
+                condominio.
+              </Text>
+            </View>
           </View>
         </>
       )}
     </AppScreen>
-  );
-}
-
-type HeroCardProps = {
-  household: Household;
-  membersCount: number;
-};
-
-function HeroCard({ household, membersCount }: HeroCardProps) {
-  const status = statusConfig(household.status);
-  return (
-    <View style={styles.heroCard}>
-      <View style={styles.heroIconWrap}>
-        <Ionicons name="home" size={28} color={colors.primaryDark} />
-      </View>
-      <View style={styles.heroCopy}>
-        <Text style={styles.heroTitle}>
-          Apto {household.apartment}
-          {household.block ? ` • Bloco ${household.block}` : ''}
-        </Text>
-        <View style={styles.heroMetaRow}>
-          <View style={[styles.statusPill, { backgroundColor: status.bg }]}>
-            <Text style={[styles.statusPillText, { color: status.color }]}>
-              {status.label}
-            </Text>
-          </View>
-          <View style={styles.heroMetaItem}>
-            <Ionicons name="people-outline" size={14} color={colors.textMuted} />
-            <Text style={styles.heroMetaText}>
-              {membersCount}{' '}
-              {membersCount === 1 ? 'morador ativo' : 'moradores ativos'}
-            </Text>
-          </View>
-        </View>
-      </View>
-    </View>
   );
 }
 
@@ -260,12 +313,22 @@ const styles = StyleSheet.create({
   },
   headerSide: {
     width: 36,
-    height: 36
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   headerTitle: {
     color: colors.textPrimary,
     fontSize: 17,
     fontWeight: '800'
+  },
+  subtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+    paddingHorizontal: 16,
+    marginTop: -4
   },
   centerState: {
     paddingVertical: 32,
@@ -324,7 +387,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18
   },
-  heroCard: {
+  unitCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
@@ -337,47 +400,37 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 3
   },
-  heroIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  unitIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: '#EAF5EF',
     alignItems: 'center',
     justifyContent: 'center'
   },
-  heroCopy: {
+  unitCopy: {
     flex: 1,
-    gap: 6
+    gap: 2
   },
-  heroTitle: {
+  unitTitle: {
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '800'
   },
-  heroMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap'
-  },
-  statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: '700'
-  },
-  heroMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4
-  },
-  heroMetaText: {
+  unitSubtitle: {
     color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600'
+    fontSize: 13
+  },
+  unitLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 6
+  },
+  unitLink: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700'
   },
   menuCard: {
     backgroundColor: '#FFFFFF',
@@ -401,33 +454,27 @@ const styles = StyleSheet.create({
     borderBottomColor: '#EEF1EF'
   },
   menuIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#EAF5EF',
     alignItems: 'center',
     justifyContent: 'center'
   },
-  menuIconWrapDisabled: {
-    backgroundColor: '#F0F2F1'
+  menuIconWrapDanger: {
+    backgroundColor: '#FBE3E3'
   },
   menuCopy: {
     flex: 1,
     gap: 2
   },
-  menuLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap'
-  },
   menuLabel: {
     color: colors.textPrimary,
     fontSize: 14,
-    fontWeight: '700'
+    fontWeight: '800'
   },
-  menuLabelDisabled: {
-    color: colors.textMuted
+  menuLabelDanger: {
+    color: colors.danger
   },
   menuDescription: {
     color: colors.textMuted,
@@ -435,28 +482,45 @@ const styles = StyleSheet.create({
     lineHeight: 16
   },
   menuBadge: {
-    minWidth: 22,
+    minWidth: 24,
     paddingHorizontal: 8,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#DCEBDF',
     alignItems: 'center',
     justifyContent: 'center'
   },
   menuBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
+    color: colors.primaryDark,
+    fontSize: 12,
     fontWeight: '800'
   },
-  soonBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: '#F0F2F1'
+  noticeBox: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+    backgroundColor: '#EFF6F1',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 4
   },
-  soonBadgeText: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontWeight: '700'
+  noticeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DCEBDF',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  noticeTitle: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 2
+  },
+  noticeText: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    lineHeight: 16
   }
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
@@ -12,18 +12,28 @@ import type { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const inactiveIconMap: Record<Exclude<keyof MainTabParamList, 'Casa'>, keyof typeof Ionicons.glyphMap> = {
+const inactiveIconMap: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMap> = {
   Home: 'home-outline',
   Reservas: 'calendar-outline',
+  Casa: 'business-outline',
   Visitantes: 'people-outline',
   Perfil: 'person-outline'
 };
 
-const activeIconMap: Record<Exclude<keyof MainTabParamList, 'Casa'>, keyof typeof Ionicons.glyphMap> = {
+const activeIconMap: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMap> = {
   Home: 'home',
   Reservas: 'calendar',
+  Casa: 'business',
   Visitantes: 'people',
   Perfil: 'person'
+};
+
+const tabLabels: Record<keyof MainTabParamList, string> = {
+  Home: 'Inicio',
+  Reservas: 'Reservas',
+  Casa: 'Minha unidade',
+  Visitantes: 'Visitantes',
+  Perfil: 'Perfil'
 };
 
 export function MainTabs() {
@@ -45,27 +55,15 @@ export function MainTabs() {
           shadowOffset: { width: 0, height: -8 },
           elevation: 12
         },
-        tabBarItemStyle: route.name === 'Casa' ? styles.centerTabItem : undefined,
-        tabBarLabel:
-          route.name === 'Casa'
-            ? () => null
-            : ({ focused, color }) => (
-                <Text
-                  numberOfLines={1}
-                  style={[styles.tabLabel, focused && styles.tabLabelActive, { color }]}
-                >
-                  {route.name === 'Home' ? 'Inicio' : route.name}
-                </Text>
-              ),
+        tabBarLabel: ({ focused, color }) => (
+          <Text
+            numberOfLines={1}
+            style={[styles.tabLabel, focused && styles.tabLabelActive, { color }]}
+          >
+            {tabLabels[route.name]}
+          </Text>
+        ),
         tabBarIcon: ({ color, focused }) => {
-          if (route.name === 'Casa') {
-            return (
-              <View style={styles.centerAction}>
-                <Ionicons name="home" size={28} color="#FFFFFF" />
-              </View>
-            );
-          }
-
           const iconName = focused
             ? activeIconMap[route.name]
             : inactiveIconMap[route.name];
@@ -90,21 +88,5 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: {
     fontWeight: '700'
-  },
-  centerTabItem: {
-    marginTop: -18
-  },
-  centerAction: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0D2518',
-    shadowOpacity: 0.24,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8
   }
 });

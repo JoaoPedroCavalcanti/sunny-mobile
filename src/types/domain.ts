@@ -144,3 +144,34 @@ export type Household = {
   created_at: string;
   members?: HouseholdMembership[];
 };
+
+export type PendingApproval = {
+  id: number;
+  household: Household;
+  user: HouseholdMemberUser;
+  role: HouseholdMembershipRole;
+  status: Extract<HouseholdMembershipStatus, 'PENDING_HOLDER' | 'PENDING_ADMIN'>;
+  joined_at: string;
+};
+
+export type DecisionAction = 'APPROVED' | 'REJECTED';
+
+export type DecisionParty = {
+  id?: number | null;
+  username?: string | null;
+  full_name?: string | null;
+  email?: string | null;
+  [key: string]: unknown;
+};
+
+export type MembershipDecision = {
+  id: number;
+  household: number | null;
+  household_apartment: string;
+  household_block: string;
+  actor: DecisionParty;
+  target: DecisionParty;
+  action: DecisionAction;
+  reason: string;
+  created_at: string;
+};
