@@ -1,12 +1,35 @@
 import { api } from '@/api/client';
 import { normalizeListResponse } from '@/api/listResponse';
-import type { VisitorAccess } from '@/types/domain';
+import type { VisitorAccess, VisitorGroup } from '@/types/domain';
 
 export type VisitorAccessInput = {
   visitor_name: string;
   scheduled_date: string;
   host_user?: number | null;
   email?: string;
+  checkout_date_time?: string | null;
+  description?: string | null;
+  all_day?: boolean;
+};
+
+export type VisitorGroupMemberInput = {
+  name: string;
+  email?: string | null;
+};
+
+export type VisitorGroupInput = {
+  name: string;
+  members?: VisitorGroupMemberInput[];
+};
+
+export type VisitorGroupPatchInput = {
+  name?: string;
+  members?: VisitorGroupMemberInput[];
+};
+
+export type VisitorGroupScheduleInput = {
+  scheduled_date: string;
+  all_day?: boolean;
   checkout_date_time?: string | null;
   description?: string | null;
 };
@@ -42,6 +65,46 @@ export async function runVisitorCheckin(token: string) {
 export async function runVisitorCheckout(token: string) {
   const { data } = await api.get<{ checkout_code: string }>(
     `/visitor_access/checkout/${token}/`
+  );
+  return data;
+}
+
+export async function listVisitorGroups() {
+  const { data } = await api.get<VisitorGroup[] | { results?: VisitorGroup[] }>(
+    '/visitor_access/groups/'
+  );
+  return normalizeListResponse(data);
+}
+
+export async function getVisitorGroup(id: number) {
+  const { data } = await api.get<VisitorGroup>(`/visitor_access/groups/${id}/`);
+  return data;
+}
+
+export async function createVisitorGroup(payload: VisitorGroupInput) {
+  const { data } = await api.post<VisitorGroup>('/visitor_access/groups/', payload);
+  return data;
+}
+
+export async function updateVisitorGroup(id: number, payload: VisitorGroupPatchInput) {
+  const { data } = await api.patch<VisitorGroup>(
+    `/visitor_access/groups/${id}/`,
+    payload
+  );
+  return data;
+}
+
+export async function deleteVisitorGroup(id: number) {
+  await api.delete(`/visitor_access/groups/${id}/`);
+}
+
+export async function scheduleVisitorGroup(
+  id: number,
+  payload: VisitorGroupScheduleInput
+) {
+  const { data } = await api.post<VisitorAccess[]>(
+    `/visitor_access/groups/${id}/schedule/`,
+    payload
   );
   return data;
 }

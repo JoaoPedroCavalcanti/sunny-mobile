@@ -91,6 +91,7 @@ export type VisitorAccess = {
   host_user: number | null;
   email: string | null;
   scheduled_date: string;
+  all_day?: boolean;
   checkin_date_time: string | null;
   checkout_date_time: string | null;
   checkin_code: string;
@@ -99,6 +100,23 @@ export type VisitorAccess = {
   description: string | null;
   link_checkin: string | null;
   link_checkout: string | null;
+  visitor_group?: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VisitorGroupMember = {
+  id: number;
+  name: string;
+  email: string | null;
+  created_at: string;
+};
+
+export type VisitorGroup = {
+  id: number;
+  name: string;
+  host_user: number;
+  members: VisitorGroupMember[];
   created_at: string;
   updated_at: string;
 };
