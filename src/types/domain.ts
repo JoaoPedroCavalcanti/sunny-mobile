@@ -12,6 +12,8 @@ export type DeliveryPlatform =
   | 'just eat'
   | 'other';
 
+export type UserRole = 'ADMIN' | 'RESIDENT' | 'EMPLOYEE';
+
 export type User = {
   id: number;
   username: string;
@@ -27,13 +29,44 @@ export type User = {
   block?: string;
   photo?: string;
   is_active?: boolean;
+  role: UserRole;
 };
+
+export type ReservationUserSummary = {
+  id: number;
+  username: string;
+  full_name?: string | null;
+};
+
+export type ReservationHouseholdSummary = {
+  id: number;
+  apartment: string;
+  block: string | null;
+};
+
+export type ReservationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export type Reservation = {
   id: number;
-  reservation_user: number | null;
   reservation_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
   guest_count?: number | null;
+  status: ReservationStatus;
+  household: ReservationHouseholdSummary | null;
+  reservation_user: ReservationUserSummary | null;
+  created_at: string;
+};
+
+export type Dependent = {
+  id: number;
+  household: number;
+  full_name: string;
+  birth_date: string;
+  cpf?: string | null;
+  relationship?: string | null;
+  is_active?: boolean;
+  created_at: string;
 };
 
 export type VisitorAccess = {

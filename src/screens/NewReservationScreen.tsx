@@ -22,15 +22,14 @@ import {
   createBbqReservation,
   createHallReservation,
   listBbqReservations,
-  listHallReservations
+  listHallReservations,
+  type ReservationInput
 } from '../api/reservations';
-import { listUsers } from '../api/users';
-import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
 import { parseDateInput, toApiDate } from '../utils/date';
 import type { ReservationsStackParamList } from '../navigation/types';
-import type { Reservation, User } from '../types/domain';
+import type { Reservation, ReservationStatus } from '../types/domain';
 
 type SpaceType = 'bbq' | 'hall';
 
@@ -38,7 +37,9 @@ type DayReservation = {
   id: string;
   resident: string;
   guests: number;
-  status: 'Pendente' | 'Aprovada';
+  timeRange: string | null;
+  status: ReservationStatus;
+  statusLabel: string;
 };
 
 const WEEKDAYS_PT = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
@@ -98,31 +99,48 @@ function isSameApiDay(reservationDate: string, day: Date) {
   return toApiDate(parseDateInput(reservationDate)) === toApiDate(day);
 }
 
+function trimSeconds(time?: string | null): string | null {
+  if (!time) return null;
+  const [h, m] = time.split(':');
+  if (!h || !m) return null;
+  return `${h}:${m}`;
+}
+
+function buildTimeRange(start?: string | null, end?: string | null): string | null {
+  const s = trimSeconds(start);
+  const e = trimSeconds(end);
+  if (!s && !e) return 'Dia inteiro';
+  if (s && e) return `${s} - ${e}`;
+  if (s) return `A partir das ${s}`;
+  return `Ate as ${e}`;
+}
+
+const STATUS_LABEL: Record<ReservationStatus, string> = {
+  PENDING: 'Aguardando',
+  APPROVED: 'Confirmada',
+  REJECTED: 'Recusada'
+};
+
 function buildDayReservations(
   reservations: Reservation[],
-  day: Date,
-  usersById: Map<number, User>,
-  currentUser: User | null
+  day: Date
 ): DayReservation[] {
   return reservations
     .filter((r) => isSameApiDay(r.reservation_date, day))
     .map((r) => {
-      const owner = r.reservation_user ? usersById.get(r.reservation_user) : null;
       const ownerName =
-        owner && [owner.first_name, owner.last_name].filter(Boolean).join(' ').trim();
-      const fallback =
-        currentUser && currentUser.id === r.reservation_user
-          ? [currentUser.first_name, currentUser.last_name]
-              .filter(Boolean)
-              .join(' ')
-              .trim() ||
-            currentUser.username
-          : 'Morador';
+        r.reservation_user?.full_name?.trim() ||
+        r.reservation_user?.username ||
+        (r.household
+          ? `Apto ${r.household.apartment}${r.household.block ? `/${r.household.block}` : ''}`
+          : 'Morador');
       return {
         id: String(r.id),
-        resident: ownerName || owner?.username || fallback,
+        resident: ownerName,
         guests: r.guest_count ?? 0,
-        status: 'Pendente'
+        timeRange: buildTimeRange(r.start_time, r.end_time),
+        status: r.status,
+        statusLabel: STATUS_LABEL[r.status]
       };
     });
 }
@@ -134,7 +152,6 @@ export function NewReservationScreen() {
   const navigation = useNavigation<NewReservationNav>();
   const route = useRoute<NewReservationRouteProp>();
   const initialSpace = route.params?.space ?? 'bbq';
-  const currentUser = useAuthStore((state) => state.user);
 
   const [space, setSpace] = useState<SpaceType>(initialSpace);
   const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date()));
@@ -145,7 +162,6 @@ export function NewReservationScreen() {
   const [guestCount, setGuestCount] = useState('');
   const [loading, setLoading] = useState(false);
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [usersById, setUsersById] = useState<Map<number, User>>(() => new Map());
 
   const weekDays = useMemo(
     () => Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i)),
@@ -153,8 +169,8 @@ export function NewReservationScreen() {
   );
 
   const dayReservations = useMemo(
-    () => buildDayReservations(reservations, selectedDay, usersById, currentUser),
-    [reservations, selectedDay, usersById, currentUser]
+    () => buildDayReservations(reservations, selectedDay),
+    [reservations, selectedDay]
   );
 
   const reservedDays = useMemo(() => {
@@ -174,24 +190,9 @@ export function NewReservationScreen() {
     }
   }, [space]);
 
-  const loadUsers = useCallback(async () => {
-    try {
-      const users = await listUsers();
-      const map = new Map<number, User>();
-      users.forEach((u) => map.set(u.id, u));
-      setUsersById(map);
-    } catch (error) {
-      // Lista de usuarios e opcional para o display de nomes.
-    }
-  }, []);
-
   useEffect(() => {
     loadReservations();
   }, [loadReservations]);
-
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
 
   useEffect(() => {
     setComposerOpen(false);
@@ -218,11 +219,14 @@ export function NewReservationScreen() {
       return;
     }
 
-    const payload = {
+    const payload: ReservationInput = {
       reservation_date: toApiDate(selectedDay),
-      guest_count: guestCount ? Number(guestCount) : undefined,
-      reservation_user: currentUser?.id ?? null
+      guest_count: guestCount ? Number(guestCount) : undefined
     };
+    // Omitimos start/end quando cobrem o dia inteiro para o backend tratar como
+    // reserva sem janela especifica (e respeitar as combinacoes validas).
+    if (sh > 0) payload.start_time = `${String(sh).padStart(2, '0')}:00`;
+    if (eh < 24) payload.end_time = `${String(eh).padStart(2, '0')}:00`;
 
     try {
       setLoading(true);
@@ -390,6 +394,12 @@ export function NewReservationScreen() {
               </View>
               <View style={styles.rowCopy}>
                 <Text style={styles.rowTitle}>{r.resident}</Text>
+                {r.timeRange ? (
+                  <View style={styles.metaRow}>
+                    <Ionicons name="time-outline" size={13} color="#8D93A1" />
+                    <Text style={styles.metaText}>{r.timeRange}</Text>
+                  </View>
+                ) : null}
                 <View style={styles.metaRow}>
                   <Ionicons name="people-outline" size={13} color="#8D93A1" />
                   <Text style={styles.metaText}>
@@ -397,8 +407,24 @@ export function NewReservationScreen() {
                   </Text>
                 </View>
               </View>
-              <View style={[styles.statusChip, styles.statusPending]}>
-                <Text style={styles.statusText}>{r.status}</Text>
+              <View
+                style={[
+                  styles.statusChip,
+                  r.status === 'PENDING' && styles.statusPending,
+                  r.status === 'APPROVED' && styles.statusApproved,
+                  r.status === 'REJECTED' && styles.statusRejected
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusText,
+                    r.status === 'PENDING' && styles.statusTextPending,
+                    r.status === 'APPROVED' && styles.statusTextApproved,
+                    r.status === 'REJECTED' && styles.statusTextRejected
+                  ]}
+                >
+                  {r.statusLabel}
+                </Text>
               </View>
             </View>
           ))}
@@ -906,12 +932,27 @@ const styles = StyleSheet.create({
     borderRadius: 10
   },
   statusPending: {
+    backgroundColor: '#FFF4D6'
+  },
+  statusApproved: {
     backgroundColor: '#E8F6EC'
+  },
+  statusRejected: {
+    backgroundColor: '#FBE3E3'
   },
   statusText: {
     color: colors.primary,
     fontSize: 11,
     fontWeight: '700'
+  },
+  statusTextPending: {
+    color: '#8A6300'
+  },
+  statusTextApproved: {
+    color: colors.primary
+  },
+  statusTextRejected: {
+    color: colors.danger
   },
   emptyDayCard: {
     flexDirection: 'row',

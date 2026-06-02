@@ -11,7 +11,7 @@ import {
   listBbqReservations,
   listHallReservations
 } from '../api/reservations';
-import type { Reservation } from '../types/domain';
+import type { Reservation, ReservationStatus } from '../types/domain';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
 import { parseDateInput } from '../utils/date';
@@ -77,7 +77,9 @@ export function ReservationsScreen() {
   }, []);
 
   const upcomingReservations = sortedReservations.filter(
-    (item) => parseDateInput(item.reservation_date).getTime() >= todayStart
+    (item) =>
+      parseDateInput(item.reservation_date).getTime() >= todayStart &&
+      item.status !== 'REJECTED'
   );
 
   const pastReservations = [...sortedReservations]
@@ -169,22 +171,25 @@ export function ReservationsScreen() {
         </View>
       ) : (
         <View style={styles.listWrap}>
-          {upcomingReservations.map((item) => (
-            <ReservationRow
-              key={`upcoming-${item.id}`}
-              item={item}
-              statusLabel="Agendada"
-              statusStyle={styles.statusUpcoming}
-              iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
-              onPress={() =>
-                Alert.alert(
-                  'Reserva',
-                  `Reserva para ${formatReservationFullDate(item.reservation_date)}`
-                )
-              }
-              onDelete={() => removeReservation(item.id)}
-            />
-          ))}
+          {upcomingReservations.map((item) => {
+            const { label, style } = statusPresentation(item.status, 'upcoming', styles);
+            return (
+              <ReservationRow
+                key={`upcoming-${item.id}`}
+                item={item}
+                statusLabel={label}
+                statusStyle={style}
+                iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
+                onPress={() =>
+                  Alert.alert(
+                    'Reserva',
+                    `Reserva para ${formatReservationFullDate(item.reservation_date)}`
+                  )
+                }
+                onDelete={() => removeReservation(item.id)}
+              />
+            );
+          })}
         </View>
       )}
 
@@ -192,21 +197,24 @@ export function ReservationsScreen() {
 
       {pastReservations.length > 0 ? (
         <View style={styles.listWrap}>
-          {pastReservations.map((item) => (
-            <ReservationRow
-              key={`past-${item.id}`}
-              item={item}
-              statusLabel="Concluida"
-              statusStyle={styles.statusCompleted}
-              iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
-              onPress={() =>
-                Alert.alert(
-                  'Reserva anterior',
-                  `Reserva realizada em ${formatReservationFullDate(item.reservation_date)}`
-                )
-              }
-            />
-          ))}
+          {pastReservations.map((item) => {
+            const { label, style } = statusPresentation(item.status, 'past', styles);
+            return (
+              <ReservationRow
+                key={`past-${item.id}`}
+                item={item}
+                statusLabel={label}
+                statusStyle={style}
+                iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
+                onPress={() =>
+                  Alert.alert(
+                    'Reserva anterior',
+                    `Reserva realizada em ${formatReservationFullDate(item.reservation_date)}`
+                  )
+                }
+              />
+            );
+          })}
         </View>
       ) : (
         <AppCard>
@@ -248,6 +256,13 @@ function ReservationRow({
   onPress,
   onDelete
 }: ReservationRowProps) {
+  const timeRange = formatTimeRange(item.start_time, item.end_time);
+  const ownerName =
+    item.reservation_user?.full_name?.trim() ||
+    item.reservation_user?.username ||
+    (item.household
+      ? `Apto ${item.household.apartment}${item.household.block ? `/${item.household.block}` : ''}`
+      : null);
   return (
     <Pressable style={styles.reservationRow} onPress={onPress}>
       <View style={styles.rowIconWrap}>
@@ -259,16 +274,37 @@ function ReservationRow({
           <Ionicons name="calendar-outline" size={13} color="#8D93A1" />
           <Text style={styles.metaText}>{formatReservationFullDate(item.reservation_date)}</Text>
         </View>
+        {timeRange ? (
+          <View style={styles.metaRow}>
+            <Ionicons name="time-outline" size={13} color="#8D93A1" />
+            <Text style={styles.metaText}>{timeRange}</Text>
+          </View>
+        ) : null}
         <View style={styles.metaRow}>
           <Ionicons name="people-outline" size={13} color="#8D93A1" />
           <Text style={styles.metaText}>
             {item.guest_count ?? 0} {(item.guest_count ?? 0) === 1 ? 'pessoa' : 'pessoas'}
           </Text>
         </View>
+        {ownerName ? (
+          <View style={styles.metaRow}>
+            <Ionicons name="person-outline" size={13} color="#8D93A1" />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {ownerName}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <View style={styles.rowSide}>
         <View style={[styles.statusChip, statusStyle]}>
-          <Text style={[styles.statusText, statusStyle === styles.statusCompleted && styles.statusTextCompleted]}>
+          <Text
+            style={[
+              styles.statusText,
+              statusStyle === styles.statusCompleted && styles.statusTextCompleted,
+              statusStyle === styles.statusPending && styles.statusTextPending,
+              statusStyle === styles.statusRejected && styles.statusTextRejected
+            ]}
+          >
             {statusLabel}
           </Text>
         </View>
@@ -314,6 +350,51 @@ function formatReservationFullDate(value: string) {
     month: '2-digit',
     year: 'numeric'
   }).format(date);
+}
+
+type StatusPresentation = {
+  label: string;
+  style: object;
+};
+
+type StatusStyles = {
+  statusUpcoming: object;
+  statusCompleted: object;
+  statusPending: object;
+  statusRejected: object;
+};
+
+function statusPresentation(
+  status: ReservationStatus,
+  context: 'upcoming' | 'past',
+  s: StatusStyles
+): StatusPresentation {
+  if (status === 'PENDING') {
+    return { label: 'Aguardando aprovacao', style: s.statusPending };
+  }
+  if (status === 'REJECTED') {
+    return { label: 'Recusada', style: s.statusRejected };
+  }
+  // APPROVED
+  return context === 'upcoming'
+    ? { label: 'Confirmada', style: s.statusUpcoming }
+    : { label: 'Concluida', style: s.statusCompleted };
+}
+
+function trimSecondsLabel(time?: string | null): string | null {
+  if (!time) return null;
+  const [h, m] = time.split(':');
+  if (!h || !m) return null;
+  return `${h}:${m}`;
+}
+
+function formatTimeRange(start?: string | null, end?: string | null): string | null {
+  const s = trimSecondsLabel(start);
+  const e = trimSecondsLabel(end);
+  if (!s && !e) return null;
+  if (s && e) return `${s} - ${e}`;
+  if (s) return `A partir das ${s}`;
+  return `Ate as ${e}`;
 }
 
 const styles = StyleSheet.create({
@@ -551,6 +632,12 @@ const styles = StyleSheet.create({
   statusCompleted: {
     backgroundColor: '#F1F7F1'
   },
+  statusPending: {
+    backgroundColor: '#FFF4D6'
+  },
+  statusRejected: {
+    backgroundColor: '#FBE3E3'
+  },
   statusText: {
     color: colors.primary,
     fontSize: 11,
@@ -558,6 +645,12 @@ const styles = StyleSheet.create({
   },
   statusTextCompleted: {
     color: colors.primaryDark
+  },
+  statusTextPending: {
+    color: '#8A6300'
+  },
+  statusTextRejected: {
+    color: colors.danger
   },
   chevronButton: {
     width: 22,

@@ -1,6 +1,6 @@
 import { api } from '@/api/client';
 import { normalizeListResponse } from '@/api/listResponse';
-import type { User } from '@/types/domain';
+import type { User, UserRole } from '@/types/domain';
 
 export type HouseholdRequest =
   | { apartment: string; block?: string }
@@ -14,7 +14,19 @@ export type UserCreateInput = {
   cpf: string;
   phone: string;
   email: string;
-  household_request: HouseholdRequest;
+  household_request?: HouseholdRequest;
+  role?: UserRole;
+  photo?: string;
+};
+
+export type EmployeeCreateInput = {
+  username: string;
+  password: string;
+  full_name: string;
+  email: string;
+  birth_date?: string;
+  cpf?: string;
+  phone?: string;
   photo?: string;
 };
 
@@ -33,19 +45,31 @@ export type UserPatchInput = Partial<{
   photo: string;
 }>;
 
+// Patch via admin: aceita role, alem de tudo do UserPatchInput.
+export type AdminUserPatchInput = UserPatchInput & { role?: UserRole };
+
 export async function getMe() {
   const { data } = await api.get<User>('/user/me/');
   return data;
 }
 
+// NAO envie role aqui — /user/me/ rejeita esse campo com 403.
 export async function patchMe(payload: UserPatchInput) {
   const { data } = await api.patch<User>('/user/me/', payload);
   return data;
 }
 
-export async function listUsers() {
-  const { data } = await api.get<User[] | { results?: User[] }>('/user/');
+export type ListUsersParams = {
+  role?: UserRole;
+};
+
+export async function listUsers(params?: ListUsersParams) {
+  const { data } = await api.get<User[] | { results?: User[] }>('/user/', { params });
   return normalizeListResponse(data);
+}
+
+export async function listEmployees() {
+  return listUsers({ role: 'EMPLOYEE' });
 }
 
 export async function getUser(id: number) {
@@ -58,8 +82,18 @@ export async function createUser(payload: UserCreateInput) {
   return data;
 }
 
-export async function patchUser(id: number, payload: UserPatchInput) {
+export async function createEmployee(payload: EmployeeCreateInput) {
+  const { data } = await api.post<User>('/user/', { ...payload, role: 'EMPLOYEE' });
+  return data;
+}
+
+export async function patchUser(id: number, payload: AdminUserPatchInput) {
   const { data } = await api.patch<User>(`/user/${id}/`, payload);
+  return data;
+}
+
+export async function setUserRole(id: number, role: UserRole) {
+  const { data } = await api.patch<User>(`/user/${id}/`, { role });
   return data;
 }
 

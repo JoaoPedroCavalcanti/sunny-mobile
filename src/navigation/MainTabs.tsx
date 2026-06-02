@@ -8,6 +8,7 @@ import { ReservationsStack } from './ReservationsStack';
 import { CasaStack } from './CasaStack';
 import { VisitorScreen } from '../screens/VisitorScreen';
 import { ProfileStack } from './ProfileStack';
+import { usePermissions } from '../hooks/usePermissions';
 import type { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -37,6 +38,7 @@ const tabLabels: Record<keyof MainTabParamList, string> = {
 };
 
 export function MainTabs() {
+  const { isEmployee } = usePermissions();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -73,7 +75,9 @@ export function MainTabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Reservas" component={ReservationsStack} />
-      <Tab.Screen name="Casa" component={CasaStack} />
+      {!isEmployee ? (
+        <Tab.Screen name="Casa" component={CasaStack} />
+      ) : null}
       <Tab.Screen name="Visitantes" component={VisitorScreen} />
       <Tab.Screen name="Perfil" component={ProfileStack} />
     </Tab.Navigator>

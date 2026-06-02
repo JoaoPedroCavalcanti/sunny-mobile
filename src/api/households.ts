@@ -2,6 +2,7 @@ import { api } from '@/api/client';
 import { normalizeListResponse } from '@/api/listResponse';
 import type {
   Household,
+  HouseholdMembership,
   MembershipDecision,
   PendingApproval
 } from '@/types/domain';
@@ -67,4 +68,37 @@ export async function listHouseholdDecisions(householdId: number) {
     MembershipDecision[] | { results?: MembershipDecision[] }
   >(`/households/${householdId}/decisions/`);
   return normalizeListResponse(data);
+}
+
+export async function listMemberships(householdId: number) {
+  const { data } = await api.get<
+    HouseholdMembership[] | { results?: HouseholdMembership[] }
+  >(`/households/${householdId}/memberships/`);
+  return normalizeListResponse(data);
+}
+
+export async function deleteMembership(householdId: number, membershipId: number) {
+  await api.delete(`/households/${householdId}/memberships/${membershipId}/`);
+}
+
+export async function promoteMembership(householdId: number, membershipId: number) {
+  const { data } = await api.post<HouseholdMembership>(
+    `/households/${householdId}/memberships/${membershipId}/promote/`
+  );
+  return data;
+}
+
+export async function demoteMembership(householdId: number, membershipId: number) {
+  const { data } = await api.post<HouseholdMembership>(
+    `/households/${householdId}/memberships/${membershipId}/demote/`
+  );
+  return data;
+}
+
+export async function transferHousehold(householdId: number, toUserId: number) {
+  const { data } = await api.post<HouseholdMembership>(
+    `/households/${householdId}/transfer/`,
+    { to_user_id: toUserId }
+  );
+  return data;
 }
