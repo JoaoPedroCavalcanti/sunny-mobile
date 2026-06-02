@@ -2,6 +2,10 @@ import { api } from '@/api/client';
 import { normalizeListResponse } from '@/api/listResponse';
 import type { User } from '@/types/domain';
 
+export type HouseholdRequest =
+  | { apartment: string; block?: string }
+  | { household_id: number };
+
 export type UserCreateInput = {
   username: string;
   password: string;
@@ -10,8 +14,7 @@ export type UserCreateInput = {
   cpf: string;
   phone: string;
   email: string;
-  apartment: string;
-  block?: string;
+  household_request: HouseholdRequest;
   photo?: string;
 };
 

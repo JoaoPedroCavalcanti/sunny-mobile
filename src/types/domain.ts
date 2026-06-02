@@ -26,6 +26,7 @@ export type User = {
   apartment?: string;
   block?: string;
   photo?: string;
+  is_active?: boolean;
 };
 
 export type Reservation = {
@@ -102,6 +103,34 @@ export type News = {
   description: string;
   author: string;
   priority_level: Priority;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HouseholdStatus = 'PENDING_ADMIN' | 'ACTIVE' | 'ARCHIVED';
+
+export type HouseholdMembershipStatus =
+  | 'PENDING_HOLDER'
+  | 'PENDING_ADMIN'
+  | 'ACTIVE'
+  | 'LEFT';
+
+export type HouseholdMembershipRole = 'HOLDER' | 'RESIDENT';
+
+export type Household = {
+  id: number;
+  apartment: string;
+  block: string | null;
+  status: HouseholdStatus;
+  created_at: string;
+};
+
+export type HouseholdMembership = {
+  id: number;
+  household: number;
+  user: number;
+  role: HouseholdMembershipRole;
+  status: HouseholdMembershipStatus;
   created_at: string;
   updated_at: string;
 };
