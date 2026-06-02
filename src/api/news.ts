@@ -1,11 +1,11 @@
 import { api } from '@/api/client';
 import { normalizeListResponse } from '@/api/listResponse';
-import type { News, Priority } from '@/types/domain';
+import type { News, NewsKind, Priority } from '@/types/domain';
 
 export type NewsInput = {
   title: string;
   description: string;
-  author: string;
+  kind?: NewsKind;
   priority_level?: Priority;
 };
 

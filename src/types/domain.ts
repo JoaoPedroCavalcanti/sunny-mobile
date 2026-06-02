@@ -130,12 +130,21 @@ export type DeliveryNotification = {
   priority_level: Priority;
 };
 
+export type NewsKind = 'NOTICE' | 'MAINTENANCE' | 'EVENT';
+
+export type NewsAuthor = {
+  id: number | null;
+  full_name: string;
+  role: string;
+};
+
 export type News = {
   id: number;
   title: string;
   description: string;
-  author: string;
+  kind: NewsKind;
   priority_level: Priority;
+  created_by: NewsAuthor;
   created_at: string;
   updated_at: string;
 };
