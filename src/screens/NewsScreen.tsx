@@ -1,14 +1,13 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CompositeNavigationProp, useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppScreen } from '../components/AppScreen';
 import { listNews } from '../api/news';
 import type { News } from '../types/domain';
 import { colors } from '../theme/colors';
-import type { MainTabParamList, RootStackParamList } from '../navigation/types';
+import type { RootStackParamList } from '../navigation/types';
 
 type Category = 'aviso' | 'manutencao' | 'evento';
 type FilterKey = 'all' | Category;
@@ -84,10 +83,7 @@ function formatNewsDate(value: string) {
   return `${day} • ${time}`;
 }
 
-type NewsNav = CompositeNavigationProp<
-  BottomTabNavigationProp<MainTabParamList, 'Comunicados'>,
-  NativeStackNavigationProp<RootStackParamList>
->;
+type NewsNav = NativeStackNavigationProp<RootStackParamList, 'News'>;
 
 export function NewsScreen() {
   const navigation = useNavigation<NewsNav>();
@@ -123,7 +119,7 @@ export function NewsScreen() {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Home');
+      navigation.navigate('MainTabs');
     }
   }
 

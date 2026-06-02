@@ -117,20 +117,30 @@ export type HouseholdMembershipStatus =
 
 export type HouseholdMembershipRole = 'HOLDER' | 'RESIDENT';
 
+export type HouseholdMemberUser = {
+  id: number;
+  username: string;
+  full_name: string | null;
+  email: string | null;
+  cpf: string | null;
+  phone: string | null;
+};
+
+export type HouseholdMembership = {
+  id: number;
+  household: number;
+  user: HouseholdMemberUser;
+  role: HouseholdMembershipRole;
+  status: HouseholdMembershipStatus;
+  joined_at: string;
+  left_at: string | null;
+};
+
 export type Household = {
   id: number;
   apartment: string;
   block: string | null;
   status: HouseholdStatus;
   created_at: string;
-};
-
-export type HouseholdMembership = {
-  id: number;
-  household: number;
-  user: number;
-  role: HouseholdMembershipRole;
-  status: HouseholdMembershipStatus;
-  created_at: string;
-  updated_at: string;
+  members?: HouseholdMembership[];
 };

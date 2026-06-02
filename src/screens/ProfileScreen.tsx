@@ -82,6 +82,10 @@ export function ProfileScreen() {
     navigation.navigate('MyData');
   }
 
+  function openMinhaCasa() {
+    navigation.navigate('Casa');
+  }
+
   const menuItems: MenuItem[] = [
     {
       key: 'meus-dados',
@@ -90,10 +94,10 @@ export function ProfileScreen() {
       onPress: openMyData
     },
     {
-      key: 'unidades',
-      icon: 'business-outline',
-      label: 'Unidades vinculadas',
-      onPress: comingSoon('Unidades vinculadas')
+      key: 'minha-casa',
+      icon: 'home-outline',
+      label: 'Minha casa',
+      onPress: openMinhaCasa
     },
     {
       key: 'notificacoes',

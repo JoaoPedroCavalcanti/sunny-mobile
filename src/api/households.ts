@@ -20,3 +20,10 @@ export async function searchHouseholds(params: HouseholdSearchParams) {
   );
   return normalizeListResponse(data);
 }
+
+export async function listHouseholds() {
+  const { data } = await api.get<Household[] | { results?: Household[] }>(
+    '/households/'
+  );
+  return normalizeListResponse(data);
+}

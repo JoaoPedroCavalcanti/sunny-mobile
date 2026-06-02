@@ -7,6 +7,7 @@ import { SignupScreen } from '../screens/SignupScreen';
 import { SignupPendingScreen } from '../screens/SignupPendingScreen';
 import { ServiceRequestsScreen } from '../screens/ServiceRequestsScreen';
 import { VisitorCheckinScreen } from '../screens/VisitorCheckinScreen';
+import { NewsScreen } from '../screens/NewsScreen';
 import type { RootStackParamList } from './types';
 import { useAuthStore } from '../store/authStore';
 import { verifyToken } from '../api/auth';
@@ -72,6 +73,11 @@ export function RootNavigator() {
             name="ServiceRequests"
             component={ServiceRequestsScreen}
             options={{ title: 'Solicitacoes' }}
+          />
+          <Stack.Screen
+            name="News"
+            component={NewsScreen}
+            options={{ headerShown: false }}
           />
         </>
       ) : (

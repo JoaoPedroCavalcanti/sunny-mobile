@@ -1,4 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { HouseholdMembership } from '../types/domain';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -7,6 +8,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   VisitorCheckin: undefined;
   ServiceRequests: undefined;
+  News: undefined;
 };
 
 export type ReservationsStackParamList = {
@@ -19,10 +21,16 @@ export type ProfileStackParamList = {
   MyData: undefined;
 };
 
+export type CasaStackParamList = {
+  CasaMenu: undefined;
+  Members: undefined;
+  MemberDetails: { membership: HouseholdMembership };
+};
+
 export type MainTabParamList = {
   Home: undefined;
   Reservas: NavigatorScreenParams<ReservationsStackParamList> | undefined;
-  Comunicados: undefined;
+  Casa: NavigatorScreenParams<CasaStackParamList> | undefined;
   Visitantes: undefined;
   Perfil: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };

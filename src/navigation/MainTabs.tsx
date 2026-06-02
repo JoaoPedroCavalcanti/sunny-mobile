@@ -5,21 +5,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ReservationsStack } from './ReservationsStack';
-import { NewsScreen } from '../screens/NewsScreen';
+import { CasaStack } from './CasaStack';
 import { VisitorScreen } from '../screens/VisitorScreen';
 import { ProfileStack } from './ProfileStack';
 import type { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const inactiveIconMap: Record<Exclude<keyof MainTabParamList, 'Comunicados'>, keyof typeof Ionicons.glyphMap> = {
+const inactiveIconMap: Record<Exclude<keyof MainTabParamList, 'Casa'>, keyof typeof Ionicons.glyphMap> = {
   Home: 'home-outline',
   Reservas: 'calendar-outline',
   Visitantes: 'people-outline',
   Perfil: 'person-outline'
 };
 
-const activeIconMap: Record<Exclude<keyof MainTabParamList, 'Comunicados'>, keyof typeof Ionicons.glyphMap> = {
+const activeIconMap: Record<Exclude<keyof MainTabParamList, 'Casa'>, keyof typeof Ionicons.glyphMap> = {
   Home: 'home',
   Reservas: 'calendar',
   Visitantes: 'people',
@@ -45,9 +45,9 @@ export function MainTabs() {
           shadowOffset: { width: 0, height: -8 },
           elevation: 12
         },
-        tabBarItemStyle: route.name === 'Comunicados' ? styles.centerTabItem : undefined,
+        tabBarItemStyle: route.name === 'Casa' ? styles.centerTabItem : undefined,
         tabBarLabel:
-          route.name === 'Comunicados'
+          route.name === 'Casa'
             ? () => null
             : ({ focused, color }) => (
                 <Text
@@ -58,10 +58,10 @@ export function MainTabs() {
                 </Text>
               ),
         tabBarIcon: ({ color, focused }) => {
-          if (route.name === 'Comunicados') {
+          if (route.name === 'Casa') {
             return (
               <View style={styles.centerAction}>
-                <Ionicons name="megaphone" size={30} color="#FFFFFF" />
+                <Ionicons name="home" size={28} color="#FFFFFF" />
               </View>
             );
           }
@@ -75,7 +75,7 @@ export function MainTabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Reservas" component={ReservationsStack} />
-      <Tab.Screen name="Comunicados" component={NewsScreen} />
+      <Tab.Screen name="Casa" component={CasaStack} />
       <Tab.Screen name="Visitantes" component={VisitorScreen} />
       <Tab.Screen name="Perfil" component={ProfileStack} />
     </Tab.Navigator>

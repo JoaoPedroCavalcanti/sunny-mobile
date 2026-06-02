@@ -157,14 +157,14 @@ export function HomeScreen() {
   const heroActions: Record<string, (() => void) | undefined> = {
     welcome: undefined,
     reservas: () => navigation.navigate('Reservas'),
-    avisos: () => navigation.navigate('Comunicados')
+    avisos: () => navigation.navigate('News')
   };
 
   const quickActions = [
     {
       label: 'Comunicados',
       icon: 'megaphone-outline' as const,
-      onPress: () => navigation.navigate('Comunicados')
+      onPress: () => navigation.navigate('News')
     },
     {
       label: 'Churrasqueira',
@@ -264,7 +264,7 @@ export function HomeScreen() {
         ))}
       </View>
 
-      <Pressable style={styles.noticeCard} onPress={() => navigation.navigate('Comunicados')}>
+      <Pressable style={styles.noticeCard} onPress={() => navigation.navigate('News')}>
         <View style={styles.noticeIconWrap}>
           <Ionicons name="megaphone-outline" size={24} color={colors.primary} />
         </View>
