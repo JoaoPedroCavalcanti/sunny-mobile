@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -92,10 +91,7 @@ export function HouseholdMembersScreen() {
   }
 
   function handleAddMember() {
-    Alert.alert(
-      'Cadastrar morador',
-      'Funcionalidade em desenvolvimento. Em breve!'
-    );
+    navigation.navigate('RegisterMemberHelp');
   }
 
   function handleMemberPress(membership: HouseholdMembership) {

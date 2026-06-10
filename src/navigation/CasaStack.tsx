@@ -4,6 +4,7 @@ import { MinhaCasaScreen } from '../screens/MinhaCasaScreen';
 import { HouseholdMembersScreen } from '../screens/HouseholdMembersScreen';
 import { MemberDetailsScreen } from '../screens/MemberDetailsScreen';
 import { PendingApprovalsScreen } from '../screens/PendingApprovalsScreen';
+import { RegisterMemberHelpScreen } from '../screens/RegisterMemberHelpScreen';
 import type { CasaStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<CasaStackParamList>();
@@ -15,6 +16,10 @@ export function CasaStack() {
       <Stack.Screen name="Members" component={HouseholdMembersScreen} />
       <Stack.Screen name="MemberDetails" component={MemberDetailsScreen} />
       <Stack.Screen name="PendingApprovals" component={PendingApprovalsScreen} />
+      <Stack.Screen
+        name="RegisterMemberHelp"
+        component={RegisterMemberHelpScreen}
+      />
     </Stack.Navigator>
   );
 }

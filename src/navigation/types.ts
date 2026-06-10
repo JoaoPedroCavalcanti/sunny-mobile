@@ -33,6 +33,7 @@ export type CasaStackParamList = {
   Members: undefined;
   MemberDetails: { membership: HouseholdMembership };
   PendingApprovals: undefined;
+  RegisterMemberHelp: undefined;
 };
 
 export type MainTabParamList = {
