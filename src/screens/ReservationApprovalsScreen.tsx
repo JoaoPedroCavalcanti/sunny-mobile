@@ -137,6 +137,15 @@ export function ReservationApprovalsScreen() {
 
   const source = space === 'bbq' ? bbq : hall;
 
+  const bbqPendingCount = useMemo(
+    () => bbq.filter((r) => r.status === 'PENDING').length,
+    [bbq]
+  );
+  const hallPendingCount = useMemo(
+    () => hall.filter((r) => r.status === 'PENDING').length,
+    [hall]
+  );
+
   const counts = useMemo(() => {
     const map: Record<ReservationStatus, number> = {
       PENDING: 0,
@@ -252,6 +261,7 @@ export function ReservationApprovalsScreen() {
           activeIcon="flame"
           label="Churrasqueira"
           active={space === 'bbq'}
+          badge={bbqPendingCount}
           onPress={() => setSpace('bbq')}
         />
         <SpaceButton
@@ -259,6 +269,7 @@ export function ReservationApprovalsScreen() {
           activeIcon="business"
           label="Salao de festas"
           active={space === 'hall'}
+          badge={hallPendingCount}
           onPress={() => setSpace('hall')}
         />
       </View>
@@ -312,10 +323,18 @@ type SpaceButtonProps = {
   activeIcon: keyof typeof Ionicons.glyphMap;
   label: string;
   active: boolean;
+  badge?: number;
   onPress: () => void;
 };
 
-function SpaceButton({ icon, activeIcon, label, active, onPress }: SpaceButtonProps) {
+function SpaceButton({
+  icon,
+  activeIcon,
+  label,
+  active,
+  badge,
+  onPress
+}: SpaceButtonProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -327,6 +346,15 @@ function SpaceButton({ icon, activeIcon, label, active, onPress }: SpaceButtonPr
         color={active ? colors.primary : '#8D93A1'}
       />
       <Text style={[styles.spaceText, active && styles.spaceTextActive]}>{label}</Text>
+      {badge && badge > 0 ? (
+        <View style={[styles.spaceBadge, active && styles.spaceBadgeActive]}>
+          <Text
+            style={[styles.spaceBadgeText, active && styles.spaceBadgeTextActive]}
+          >
+            {badge > 99 ? '99+' : badge}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -588,6 +616,26 @@ const styles = StyleSheet.create({
   spaceTextActive: {
     color: colors.primary,
     fontWeight: '700'
+  },
+  spaceBadge: {
+    minWidth: 20,
+    paddingHorizontal: 6,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#F0F2F1',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  spaceBadgeActive: {
+    backgroundColor: colors.primary
+  },
+  spaceBadgeText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  spaceBadgeTextActive: {
+    color: '#FFFFFF'
   },
   statusTabsRow: {
     flexDirection: 'row',

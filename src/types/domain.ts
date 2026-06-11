@@ -274,5 +274,7 @@ export type AdminDashboardOverview = {
   active_residents: number;
   total_reservations: number;
   pending_reservations: number;
+  pending_bbq_reservations: number;
+  pending_hall_reservations: number;
   published_news: number;
 };
