@@ -403,7 +403,7 @@ export function VisitorScreen() {
   function openVisitorActions(row: VisitorRow) {
     Alert.alert(row.name, undefined, [
       {
-        text: row.isGroup ? 'Cancelar visita do grupo' : 'Remover visitante',
+        text: 'Cancelar visita',
         style: 'destructive',
         onPress: () => handleDeleteVisitor(row)
       },
@@ -412,21 +412,20 @@ export function VisitorScreen() {
   }
 
   async function handleDeleteVisitor(row: VisitorRow) {
-    const title = row.isGroup ? 'Cancelar visita' : 'Remover visitante';
     const message = row.isGroup
       ? `Deseja cancelar a visita do grupo "${row.name}"?`
-      : `Deseja remover ${row.name}?`;
-    Alert.alert(title, message, [
+      : `Deseja cancelar a visita de ${row.name}?`;
+    Alert.alert('Cancelar visita', message, [
       { text: 'Voltar', style: 'cancel' },
       {
-        text: row.isGroup ? 'Cancelar visita' : 'Remover',
+        text: 'Cancelar visita',
         style: 'destructive',
         onPress: async () => {
           try {
             await deleteVisitor(row.id);
             await loadData();
           } catch (error) {
-            Alert.alert('Falha ao remover', extractErrorMessage(error));
+            Alert.alert('Falha ao cancelar', extractErrorMessage(error));
           }
         }
       }
