@@ -31,6 +31,7 @@ import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
 import { parseDateInput, toApiDate } from '../utils/date';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuthStore } from '../store/authStore';
 import type { ReservationsStackParamList } from '../navigation/types';
 import type { Reservation, ReservationStatus, User } from '../types/domain';
 
@@ -166,6 +167,7 @@ export function NewReservationScreen() {
   const navigation = useNavigation<NewReservationNav>();
   const route = useRoute<NewReservationRouteProp>();
   const { isAdmin } = usePermissions();
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const initialSpace = route.params?.space ?? 'bbq';
   const initialOpenUserPicker = route.params?.openUserPicker ?? false;
 
@@ -284,8 +286,13 @@ export function NewReservationScreen() {
     // reserva sem janela especifica (e respeitar as combinacoes validas).
     if (sh > 0) payload.start_time = `${String(sh).padStart(2, '0')}:00`;
     if (eh < 24) payload.end_time = `${String(eh).padStart(2, '0')}:00`;
-    if (isAdmin && targetUser) {
-      payload.reservation_user = targetUser.id;
+    // Backend exige reservation_user sempre que requester.is_staff. Se o admin
+    // nao escolheu morador, mandamos o proprio id como fallback.
+    if (isAdmin) {
+      const targetId = targetUser?.id ?? currentUserId;
+      if (targetId != null) {
+        payload.reservation_user = targetId;
+      }
     }
 
     try {

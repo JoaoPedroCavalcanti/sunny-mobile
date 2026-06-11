@@ -253,6 +253,7 @@ export function ReservationsScreen() {
                 iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
                 onPress={() => openDetails(item, 'upcoming')}
                 onDelete={() => removeReservation(item.id)}
+                showApartment={isAdmin}
               />
             );
           })}
@@ -273,6 +274,7 @@ export function ReservationsScreen() {
                 statusStyle={style}
                 iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
                 onPress={() => openDetails(item, 'past')}
+                showApartment={isAdmin}
               />
             );
           })}
@@ -475,6 +477,7 @@ type ReservationRowProps = {
   iconName: React.ComponentProps<typeof Ionicons>['name'];
   onPress: () => void;
   onDelete?: () => void;
+  showApartment?: boolean;
 };
 
 function ReservationRow({
@@ -483,15 +486,17 @@ function ReservationRow({
   statusStyle,
   iconName,
   onPress,
-  onDelete
+  onDelete,
+  showApartment = false
 }: ReservationRowProps) {
   const timeRange = formatTimeRange(item.start_time, item.end_time);
+  const apartmentLabel = item.household
+    ? `Apto ${item.household.apartment}${item.household.block ? `/${item.household.block}` : ''}`
+    : null;
   const ownerName =
     item.reservation_user?.full_name?.trim() ||
     item.reservation_user?.username ||
-    (item.household
-      ? `Apto ${item.household.apartment}${item.household.block ? `/${item.household.block}` : ''}`
-      : null);
+    (showApartment ? null : apartmentLabel);
   return (
     <Pressable style={styles.reservationRow} onPress={onPress}>
       <View style={styles.rowIconWrap}>
@@ -520,6 +525,14 @@ function ReservationRow({
             <Ionicons name="person-outline" size={13} color="#8D93A1" />
             <Text style={styles.metaText} numberOfLines={1}>
               {ownerName}
+            </Text>
+          </View>
+        ) : null}
+        {showApartment && apartmentLabel ? (
+          <View style={styles.metaRow}>
+            <Ionicons name="home-outline" size={13} color="#8D93A1" />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {apartmentLabel}
             </Text>
           </View>
         ) : null}
