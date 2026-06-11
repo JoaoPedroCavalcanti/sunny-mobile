@@ -1,5 +1,14 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,13 +17,15 @@ import { AppCard } from '../components/AppCard';
 import {
   deleteBbqReservation,
   deleteHallReservation,
+  getBbqReservation,
+  getHallReservation,
   listBbqReservations,
   listHallReservations
 } from '../api/reservations';
 import type { Reservation, ReservationStatus } from '../types/domain';
 import { colors } from '../theme/colors';
 import { extractErrorMessage } from '../utils/extractError';
-import { parseDateInput } from '../utils/date';
+import { formatDateTime, parseDateInput } from '../utils/date';
 import { usePermissions } from '../hooks/usePermissions';
 import type { ReservationsStackParamList } from '../navigation/types';
 
@@ -28,6 +39,42 @@ export function ReservationsScreen() {
   const [tab, setTab] = useState<ReservationTab>('bbq');
   const [list, setList] = useState<Reservation[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Reservation | null>(null);
+  const [detailContext, setDetailContext] = useState<'upcoming' | 'past'>('upcoming');
+  const [detailSpace, setDetailSpace] = useState<ReservationTab>('bbq');
+
+  const openDetails = useCallback(
+    async (item: Reservation, context: 'upcoming' | 'past') => {
+      setDetailVisible(true);
+      setDetailLoading(true);
+      setDetailError(null);
+      setDetail(item);
+      setDetailContext(context);
+      setDetailSpace(tab);
+      try {
+        const fetched =
+          tab === 'bbq'
+            ? await getBbqReservation(item.id)
+            : await getHallReservation(item.id);
+        setDetail(fetched);
+      } catch (error) {
+        setDetailError(extractErrorMessage(error));
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [tab]
+  );
+
+  function closeDetails() {
+    setDetailVisible(false);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(false);
+  }
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
@@ -204,12 +251,7 @@ export function ReservationsScreen() {
                 statusLabel={label}
                 statusStyle={style}
                 iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
-                onPress={() =>
-                  Alert.alert(
-                    'Reserva',
-                    `Reserva para ${formatReservationFullDate(item.reservation_date)}`
-                  )
-                }
+                onPress={() => openDetails(item, 'upcoming')}
                 onDelete={() => removeReservation(item.id)}
               />
             );
@@ -230,12 +272,7 @@ export function ReservationsScreen() {
                 statusLabel={label}
                 statusStyle={style}
                 iconName={tab === 'bbq' ? 'flame-outline' : 'business-outline'}
-                onPress={() =>
-                  Alert.alert(
-                    'Reserva anterior',
-                    `Reserva realizada em ${formatReservationFullDate(item.reservation_date)}`
-                  )
-                }
+                onPress={() => openDetails(item, 'past')}
               />
             );
           })}
@@ -259,7 +296,175 @@ export function ReservationsScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
       </Pressable>
+
+      <ReservationDetailsModal
+        visible={detailVisible}
+        onClose={closeDetails}
+        loading={detailLoading}
+        error={detailError}
+        reservation={detail}
+        space={detailSpace}
+        context={detailContext}
+      />
     </AppScreen>
+  );
+}
+
+type ReservationDetailsModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  loading: boolean;
+  error: string | null;
+  reservation: Reservation | null;
+  space: ReservationTab;
+  context: 'upcoming' | 'past';
+};
+
+function ReservationDetailsModal({
+  visible,
+  onClose,
+  loading,
+  error,
+  reservation,
+  space,
+  context
+}: ReservationDetailsModalProps) {
+  const presentation = reservation
+    ? statusPresentation(reservation.status, context, styles)
+    : null;
+  const timeRange = reservation
+    ? formatTimeRange(reservation.start_time, reservation.end_time)
+    : null;
+  const ownerName =
+    reservation?.reservation_user?.full_name?.trim() ||
+    reservation?.reservation_user?.username ||
+    null;
+  const householdLabel = reservation?.household
+    ? `Apto ${reservation.household.apartment}${
+        reservation.household.block ? ` / Bloco ${reservation.household.block}` : ''
+      }`
+    : null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.detailWrapper}>
+        <Pressable style={styles.detailBackdrop} onPress={onClose} />
+        <View style={styles.detailSheet}>
+          <View style={styles.detailHandle} />
+
+          <View style={styles.detailHeader}>
+            <View style={styles.detailIcon}>
+              <Ionicons
+                name={space === 'bbq' ? 'flame-outline' : 'business-outline'}
+                size={24}
+                color={colors.primary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailEyebrow}>
+                {space === 'bbq' ? 'Churrasqueira' : 'Salao de festas'}
+              </Text>
+              <Text style={styles.detailTitle}>Detalhes da reserva</Text>
+            </View>
+            <Pressable onPress={onClose} hitSlop={8} style={styles.detailCloseButton}>
+              <Ionicons name="close" size={18} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+
+          <View style={styles.sheetDivider} />
+
+          {loading ? (
+            <View style={styles.detailLoadingWrap}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.detailLoadingText}>Carregando detalhes...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.detailErrorWrap}>
+              <Ionicons name="alert-circle-outline" size={26} color={colors.danger} />
+              <Text style={styles.detailErrorText}>{error}</Text>
+            </View>
+          ) : reservation ? (
+            <ScrollView
+              style={styles.detailBody}
+              contentContainerStyle={styles.detailBodyContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {presentation ? (
+                <View style={[styles.statusChip, presentation.style, styles.detailStatusChip]}>
+                  <Text
+                    style={[
+                      styles.statusText,
+                      presentation.style === styles.statusCompleted &&
+                        styles.statusTextCompleted,
+                      presentation.style === styles.statusPending &&
+                        styles.statusTextPending,
+                      presentation.style === styles.statusRejected &&
+                        styles.statusTextRejected
+                    ]}
+                  >
+                    {presentation.label}
+                  </Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.detailHeadline}>
+                {formatReservationHeadline(reservation.reservation_date)}
+              </Text>
+
+              <View style={styles.detailGroup}>
+                <DetailRow
+                  icon="calendar-outline"
+                  label="Data"
+                  value={formatReservationFullDate(reservation.reservation_date)}
+                />
+                {timeRange ? (
+                  <DetailRow icon="time-outline" label="Horario" value={timeRange} />
+                ) : null}
+                <DetailRow
+                  icon="people-outline"
+                  label="Convidados"
+                  value={`${reservation.guest_count ?? 0} ${
+                    (reservation.guest_count ?? 0) === 1 ? 'pessoa' : 'pessoas'
+                  }`}
+                />
+                {ownerName ? (
+                  <DetailRow icon="person-outline" label="Responsavel" value={ownerName} />
+                ) : null}
+                {householdLabel ? (
+                  <DetailRow icon="home-outline" label="Unidade" value={householdLabel} />
+                ) : null}
+                <DetailRow
+                  icon="create-outline"
+                  label="Solicitada em"
+                  value={formatDateTime(reservation.created_at)}
+                />
+                <DetailRow icon="pricetag-outline" label="ID" value={`#${reservation.id}`} />
+              </View>
+            </ScrollView>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+type DetailRowProps = {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  value: string;
+};
+
+function DetailRow({ icon, label, value }: DetailRowProps) {
+  return (
+    <View style={styles.detailRow}>
+      <View style={styles.detailRowIcon}>
+        <Ionicons name={icon} size={16} color={colors.primary} />
+      </View>
+      <View style={styles.detailRowCopy}>
+        <Text style={styles.detailRowLabel}>{label}</Text>
+        <Text style={styles.detailRowValue}>{value}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -757,5 +962,154 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18
+  },
+  detailWrapper: {
+    flex: 1,
+    justifyContent: 'flex-end'
+  },
+  detailBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 28, 19, 0.45)'
+  },
+  detailSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+    gap: 14,
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 16
+  },
+  detailHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D8DCDA',
+    marginBottom: 6
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 4
+  },
+  detailIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#EAF5EF',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  detailEyebrow: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase'
+  },
+  detailTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 2
+  },
+  detailCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F4F6F5',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sheetDivider: {
+    height: 1,
+    backgroundColor: '#EEF1EF',
+    marginVertical: 2
+  },
+  detailLoadingWrap: {
+    paddingVertical: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10
+  },
+  detailLoadingText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  detailErrorWrap: {
+    paddingVertical: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 8
+  },
+  detailErrorText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center'
+  },
+  detailBody: {
+    flexGrow: 0
+  },
+  detailBodyContent: {
+    gap: 14,
+    paddingBottom: 8
+  },
+  detailStatusChip: {
+    alignSelf: 'flex-start'
+  },
+  detailHeadline: {
+    color: colors.textPrimary,
+    fontSize: 20,
+    fontWeight: '800'
+  },
+  detailGroup: {
+    backgroundColor: '#F8FAF8',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#EAEFEB'
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 6
+  },
+  detailRowIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#EAF5EF',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  detailRowCopy: {
+    flex: 1,
+    gap: 2
+  },
+  detailRowLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase'
+  },
+  detailRowValue: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700'
   }
 });
