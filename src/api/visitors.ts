@@ -1,6 +1,6 @@
 import { api } from '@/api/client';
 import { normalizeListResponse } from '@/api/listResponse';
-import type { VisitorAccess, VisitorGroup } from '@/types/domain';
+import type { VisitorAccess, VisitorGroup, VisitorStatus } from '@/types/domain';
 
 export type VisitorAccessInput = {
   visitor_name: string;
@@ -10,6 +10,13 @@ export type VisitorAccessInput = {
   checkout_date_time?: string | null;
   description?: string | null;
   all_day?: boolean;
+};
+
+export type VisitorPeriod = 'future' | 'past';
+
+export type ListVisitorsParams = {
+  period?: VisitorPeriod;
+  status?: VisitorStatus;
 };
 
 export type VisitorGroupMemberInput = {
@@ -34,9 +41,18 @@ export type VisitorGroupScheduleInput = {
   description?: string | null;
 };
 
-export async function listVisitors() {
+export async function listVisitors(params?: ListVisitorsParams) {
   const { data } = await api.get<VisitorAccess[] | { results?: VisitorAccess[] }>(
-    '/visitor_access/'
+    '/visitor_access/',
+    { params }
+  );
+  return normalizeListResponse(data);
+}
+
+export async function listVisitorGroupVisits(params?: ListVisitorsParams) {
+  const { data } = await api.get<VisitorAccess[] | { results?: VisitorAccess[] }>(
+    '/visitor_access/groups/visits/',
+    { params }
   );
   return normalizeListResponse(data);
 }
@@ -102,7 +118,7 @@ export async function scheduleVisitorGroup(
   id: number,
   payload: VisitorGroupScheduleInput
 ) {
-  const { data } = await api.post<VisitorAccess[]>(
+  const { data } = await api.post<VisitorAccess>(
     `/visitor_access/groups/${id}/schedule/`,
     payload
   );

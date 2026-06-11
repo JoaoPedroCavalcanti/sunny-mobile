@@ -85,6 +85,14 @@ export type Dependent = {
   created_at: string;
 };
 
+export type VisitorStatus =
+  | 'SCHEDULED'
+  | 'CHECKED_IN'
+  | 'CHECKED_OUT'
+  | 'NO_SHOW'
+  | 'EXPIRED'
+  | 'CANCELLED';
+
 export type VisitorAccess = {
   id: number;
   visitor_name: string;
@@ -96,7 +104,7 @@ export type VisitorAccess = {
   checkout_date_time: string | null;
   checkin_code: string;
   checkout_code: string;
-  status: string;
+  status: VisitorStatus | string;
   description: string | null;
   link_checkin: string | null;
   link_checkout: string | null;

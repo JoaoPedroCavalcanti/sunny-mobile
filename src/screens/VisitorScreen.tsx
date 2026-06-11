@@ -22,22 +22,22 @@ import {
   createVisitorGroup,
   deleteVisitor,
   deleteVisitorGroup,
+  listVisitorGroupVisits,
   listVisitorGroups,
   listVisitors,
   scheduleVisitorGroup,
   updateVisitorGroup
 } from '../api/visitors';
+import { listUsers } from '../api/users';
 import { useAuthStore } from '../store/authStore';
 import { extractErrorMessage } from '../utils/extractError';
-import type { VisitorAccess, VisitorGroup } from '../types/domain';
+import type { User, VisitorAccess, VisitorGroup, VisitorStatus } from '../types/domain';
 import { colors } from '../theme/colors';
 import { combineBrDateTime, maskBrDate, maskBrTime } from '../utils/date';
 import type { MainTabParamList, RootStackParamList } from '../navigation/types';
 
-type OuterTab = 'upcoming' | 'history';
-type InnerTab = 'visitors' | 'groups';
-
-type StatusKey = 'authorized' | 'waiting' | 'completed' | 'cancelled';
+type MainTab = 'upcoming' | 'history' | 'groups';
+type StatusFilter = 'all' | VisitorStatus;
 
 type VisitorRow = {
   key: string;
@@ -45,9 +45,10 @@ type VisitorRow = {
   name: string;
   scheduledAt: string;
   allDay: boolean;
-  apartment: string;
-  status: StatusKey;
-  isPast: boolean;
+  hostUserId: number | null;
+  hostName: string | null;
+  status: VisitorStatus;
+  isGroup: boolean;
 };
 
 type GroupRow = {
@@ -64,41 +65,60 @@ type MemberDraft = {
   email: string;
 };
 
-const STATUS_STYLES: Record<StatusKey, { label: string; color: string; bg: string }> = {
-  authorized: { label: 'Autorizado', color: '#0F7A43', bg: '#E8F6EC' },
-  waiting: { label: 'Aguardando', color: '#3B7AC9', bg: '#E5EEF9' },
-  completed: { label: 'Concluida', color: '#5C6770', bg: '#EEF0F2' },
-  cancelled: { label: 'Cancelada', color: '#CD3131', bg: '#FBE3E3' }
+const STATUS_META: Record<
+  VisitorStatus,
+  { label: string; dot: string; chipBg: string; chipColor: string }
+> = {
+  SCHEDULED: { label: 'Agendado', dot: '#3B7AC9', chipBg: '#E5EEF9', chipColor: '#1E4F8C' },
+  CHECKED_IN: { label: 'Check-in', dot: '#0F7A43', chipBg: '#E8F6EC', chipColor: '#0C5F35' },
+  CHECKED_OUT: { label: 'Check-out', dot: '#7B3DA0', chipBg: '#F3E7F8', chipColor: '#5C2A7E' },
+  NO_SHOW: { label: 'Não compareceu', dot: '#E08A2A', chipBg: '#FBE9DC', chipColor: '#8A5212' },
+  EXPIRED: { label: 'Expirado', dot: '#8D93A1', chipBg: '#EEF0F2', chipColor: '#5C6770' },
+  CANCELLED: { label: 'Cancelado', dot: '#CD3131', chipBg: '#FBE3E3', chipColor: '#A52424' }
 };
 
-function mapStatus(item: VisitorAccess): StatusKey {
-  const s = item.status?.toLowerCase() ?? '';
-  if (item.checkout_date_time) return 'completed';
-  if (item.checkin_date_time) return 'authorized';
-  if (s.includes('check-out')) return 'completed';
-  if (s.includes('check-in') || s.includes('authorized') || s.includes('autorizado')) {
-    return 'authorized';
+const STATUS_ORDER: VisitorStatus[] = [
+  'SCHEDULED',
+  'CHECKED_IN',
+  'CHECKED_OUT',
+  'NO_SHOW',
+  'EXPIRED',
+  'CANCELLED'
+];
+
+const MAIN_TABS: { key: MainTab; label: string }[] = [
+  { key: 'upcoming', label: 'Próximas visitas' },
+  { key: 'history', label: 'Histórico' },
+  { key: 'groups', label: 'Grupos de visitantes' }
+];
+
+function normalizeStatus(raw: string | undefined | null): VisitorStatus {
+  const value = (raw ?? '').toString().trim().toUpperCase();
+  if (
+    value === 'SCHEDULED' ||
+    value === 'CHECKED_IN' ||
+    value === 'CHECKED_OUT' ||
+    value === 'NO_SHOW' ||
+    value === 'EXPIRED' ||
+    value === 'CANCELLED'
+  ) {
+    return value;
   }
-  if (s.includes('cancel')) return 'cancelled';
-  return 'waiting';
+  return 'SCHEDULED';
 }
 
-function toVisitorRow(item: VisitorAccess, fallbackApt: string): VisitorRow {
-  const status = mapStatus(item);
-  const scheduled = item.scheduled_date;
-  const isPast =
-    status === 'completed' ||
-    status === 'cancelled' ||
-    new Date(scheduled).getTime() < Date.now();
+function toVisitorRow(item: VisitorAccess, hostName: string | null): VisitorRow {
+  const isGroup = item.visitor_group != null;
   return {
-    key: `v-${item.id}`,
+    key: `${isGroup ? 'gv' : 'v'}-${item.id}`,
     id: item.id,
-    name: item.visitor_name || 'Visitante',
-    scheduledAt: scheduled,
+    name: item.visitor_name || (isGroup ? 'Grupo de visitantes' : 'Visitante'),
+    scheduledAt: item.scheduled_date,
     allDay: Boolean(item.all_day),
-    apartment: fallbackApt,
-    status,
-    isPast
+    hostUserId: item.host_user,
+    hostName,
+    status: normalizeStatus(item.status),
+    isGroup
   };
 }
 
@@ -112,19 +132,37 @@ function toGroupRow(item: VisitorGroup): GroupRow {
   };
 }
 
-function formatScheduled(value: string) {
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function formatRelativeDateTime(value: string, allDay: boolean) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
-  const date = new Intl.DateTimeFormat('pt-BR', {
+
+  const today = startOfDay(new Date());
+  const target = startOfDay(d);
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+
+  let label = '';
+  if (diffDays === 0) label = 'Hoje';
+  else if (diffDays === 1) label = 'Amanhã';
+  else if (diffDays === -1) label = 'Ontem';
+
+  const dateStr = new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
   }).format(d);
-  const time = new Intl.DateTimeFormat('pt-BR', {
+  const timeStr = new Intl.DateTimeFormat('pt-BR', {
     hour: '2-digit',
     minute: '2-digit'
   }).format(d);
-  return `${date} • ${time}`;
+
+  const datePart = label ? `${label}, ${dateStr}` : dateStr;
+  return allDay ? datePart : `${datePart} • ${timeStr}`;
 }
 
 function formatDateOnly(value: string) {
@@ -146,23 +184,17 @@ function getInitials(name: string) {
     .join('');
 }
 
-function pickAvatarTone(seed: string) {
-  const palette = [
-    { bg: '#EAF5EF', color: '#0F7A43' },
-    { bg: '#E5EEF9', color: '#3B7AC9' },
-    { bg: '#FBE9DC', color: '#C5732E' },
-    { bg: '#F3E7F8', color: '#7B3DA0' },
-    { bg: '#FDECEC', color: '#CD3131' }
-  ];
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) % 1000;
-  }
-  return palette[hash % palette.length];
-}
-
 function makeMemberKey() {
   return `m-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getUserDisplayName(user: User | null | undefined) {
+  if (!user) return null;
+  const full = user.full_name?.trim();
+  if (full) return full;
+  const combined = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+  if (combined) return combined;
+  return user.username || null;
 }
 
 type VisitorsNav = CompositeNavigationProp<
@@ -175,9 +207,12 @@ export function VisitorScreen() {
   const currentUser = useAuthStore((state) => state.user);
   const [items, setItems] = useState<VisitorAccess[]>([]);
   const [groups, setGroups] = useState<VisitorGroup[]>([]);
+  const [hostsById, setHostsById] = useState<Record<number, string>>({});
   const [refreshing, setRefreshing] = useState(false);
-  const [outerTab, setOuterTab] = useState<OuterTab>('upcoming');
-  const [innerTab, setInnerTab] = useState<InnerTab>('visitors');
+
+  const [mainTab, setMainTab] = useState<MainTab>('upcoming');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -202,26 +237,53 @@ export function VisitorScreen() {
   const [scheduleAllDay, setScheduleAllDay] = useState(false);
   const [scheduleDescription, setScheduleDescription] = useState('');
 
-  const fallbackApartment = useMemo(() => {
-    if (!currentUser?.apartment) return 'Apartamento';
-    return currentUser.block
-      ? `Apto ${currentUser.apartment}/${currentUser.block}`
-      : `Apartamento ${currentUser.apartment}`;
-  }, [currentUser?.apartment, currentUser?.block]);
+  const [groupPickerOpen, setGroupPickerOpen] = useState(false);
+  const [detailGroup, setDetailGroup] = useState<VisitorGroup | null>(null);
+  const [expandedGroupId, setExpandedGroupId] = useState<number | null>(null);
+
+  const isGroupsTab = mainTab === 'groups';
+  const isUpcoming = mainTab === 'upcoming';
+
+  const apiParams = useMemo(() => {
+    const params: { period?: 'future' | 'past'; status?: VisitorStatus } = {};
+    if (mainTab === 'upcoming') params.period = 'future';
+    else if (mainTab === 'history') params.period = 'past';
+    if (statusFilter !== 'all') params.status = statusFilter;
+    return params;
+  }, [mainTab, statusFilter]);
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [visitorsData, groupsData] = await Promise.all([
-        listVisitors().catch(() => [] as VisitorAccess[]),
-        listVisitorGroups().catch(() => [] as VisitorGroup[])
+      const fetchSolo = isGroupsTab
+        ? Promise.resolve([] as VisitorAccess[])
+        : listVisitors(apiParams).catch(() => [] as VisitorAccess[]);
+      const fetchGroupVisits = isGroupsTab
+        ? Promise.resolve([] as VisitorAccess[])
+        : listVisitorGroupVisits(apiParams).catch(() => [] as VisitorAccess[]);
+      const [soloData, groupVisitsData, groupsData, usersData] = await Promise.all([
+        fetchSolo,
+        fetchGroupVisits,
+        listVisitorGroups().catch(() => [] as VisitorGroup[]),
+        listUsers().catch(() => [] as User[])
       ]);
-      setItems(visitorsData);
+      setItems([...soloData, ...groupVisitsData]);
       setGroups(groupsData);
+
+      const map: Record<number, string> = {};
+      if (currentUser?.id) {
+        const meName = getUserDisplayName(currentUser);
+        if (meName) map[currentUser.id] = meName;
+      }
+      for (const u of usersData) {
+        const name = getUserDisplayName(u);
+        if (name && typeof u.id === 'number') map[u.id] = name;
+      }
+      setHostsById(map);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [apiParams, currentUser, isGroupsTab]);
 
   useFocusEffect(
     useCallback(() => {
@@ -229,20 +291,17 @@ export function VisitorScreen() {
     }, [loadData])
   );
 
-  const visitorRows = useMemo(
-    () => items.map((v) => toVisitorRow(v, fallbackApartment)),
-    [items, fallbackApartment]
-  );
-
-  const filteredVisitors = useMemo(() => {
-    const wanted = outerTab === 'upcoming' ? false : true;
-    return visitorRows
-      .filter((r) => r.isPast === wanted)
-      .sort(
-        (a, b) =>
-          new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
-      );
-  }, [visitorRows, outerTab]);
+  const visitorRows = useMemo(() => {
+    const rows = items.map((v) =>
+      toVisitorRow(v, v.host_user != null ? hostsById[v.host_user] ?? null : null)
+    );
+    rows.sort((a, b) => {
+      const aT = new Date(a.scheduledAt).getTime();
+      const bT = new Date(b.scheduledAt).getTime();
+      return isUpcoming ? aT - bT : bT - aT;
+    });
+    return rows;
+  }, [items, hostsById, isUpcoming]);
 
   const groupRows = useMemo(
     () =>
@@ -271,6 +330,37 @@ export function VisitorScreen() {
     setComposerOpen(true);
   }
 
+  function openCreateActions() {
+    Alert.alert('Nova reserva', 'Selecione o tipo da reserva:', [
+      { text: 'Reserva de visitante', onPress: openComposer },
+      { text: 'Reserva de grupo', onPress: openGroupReservation },
+      { text: 'Cancelar', style: 'cancel' }
+    ]);
+  }
+
+  function openGroupReservation() {
+    if (groups.length === 0) {
+      Alert.alert(
+        'Nenhum grupo cadastrado',
+        'Crie um grupo de visitantes antes de fazer a reserva.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Criar grupo', onPress: openCreateGroup }
+        ]
+      );
+      return;
+    }
+    setGroupPickerOpen(true);
+  }
+
+  function handleHeaderAdd() {
+    if (isGroupsTab) {
+      openCreateGroup();
+    } else {
+      openCreateActions();
+    }
+  }
+
   async function submitVisitor() {
     if (!visitorName.trim()) {
       Alert.alert('Dados incompletos', 'Informe o nome do visitante.');
@@ -281,10 +371,10 @@ export function VisitorScreen() {
       : combineBrDateTime(visitorDate, visitorTime);
     if (!scheduled) {
       Alert.alert(
-        'Data invalida',
+        'Data inválida',
         visitorAllDay
-          ? 'Informe uma data valida (DD-MM-AAAA).'
-          : 'Informe data e horario validos (DD-MM-AAAA e HH-MM).'
+          ? 'Informe uma data válida (DD-MM-AAAA).'
+          : 'Informe data e horário válidos (DD-MM-AAAA e HH-MM).'
       );
       return;
     }
@@ -310,26 +400,37 @@ export function VisitorScreen() {
     }
   }
 
+  function openVisitorActions(row: VisitorRow) {
+    Alert.alert(row.name, undefined, [
+      {
+        text: row.isGroup ? 'Cancelar visita do grupo' : 'Remover visitante',
+        style: 'destructive',
+        onPress: () => handleDeleteVisitor(row)
+      },
+      { text: 'Voltar', style: 'cancel' }
+    ]);
+  }
+
   async function handleDeleteVisitor(row: VisitorRow) {
-    Alert.alert(
-      'Remover visitante',
-      `Deseja remover ${row.name}?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Remover',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteVisitor(row.id);
-              await loadData();
-            } catch (error) {
-              Alert.alert('Falha ao remover', extractErrorMessage(error));
-            }
+    const title = row.isGroup ? 'Cancelar visita' : 'Remover visitante';
+    const message = row.isGroup
+      ? `Deseja cancelar a visita do grupo "${row.name}"?`
+      : `Deseja remover ${row.name}?`;
+    Alert.alert(title, message, [
+      { text: 'Voltar', style: 'cancel' },
+      {
+        text: row.isGroup ? 'Cancelar visita' : 'Remover',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteVisitor(row.id);
+            await loadData();
+          } catch (error) {
+            Alert.alert('Falha ao remover', extractErrorMessage(error));
           }
         }
-      ]
-    );
+      }
+    ]);
   }
 
   function resetGroupSheet() {
@@ -361,15 +462,14 @@ export function VisitorScreen() {
   }
 
   function removeMemberRow(key: string) {
-    setGroupMembers((prev) =>
-      prev.length === 1 ? prev : prev.filter((m) => m.key !== key)
-    );
+    setGroupMembers((prev) => (prev.length === 1 ? prev : prev.filter((m) => m.key !== key)));
   }
 
-  function updateMemberRow(key: string, patch: Partial<Pick<MemberDraft, 'name' | 'email'>>) {
-    setGroupMembers((prev) =>
-      prev.map((m) => (m.key === key ? { ...m, ...patch } : m))
-    );
+  function updateMemberRow(
+    key: string,
+    patch: Partial<Pick<MemberDraft, 'name' | 'email'>>
+  ) {
+    setGroupMembers((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
   }
 
   async function submitGroup() {
@@ -381,23 +481,17 @@ export function VisitorScreen() {
     const cleanMembers = groupMembers
       .map((m) => ({ name: m.name.trim(), email: m.email.trim() }))
       .filter((m) => m.name.length > 0)
-      .map((m) => ({
-        name: m.name,
-        email: m.email ? m.email : undefined
-      }));
+      .map((m) => ({ name: m.name, email: m.email ? m.email : undefined }));
 
     if (cleanMembers.length === 0) {
-      Alert.alert('Membros obrigatorios', 'Inclua pelo menos um membro no grupo.');
+      Alert.alert('Membros obrigatórios', 'Inclua pelo menos um membro no grupo.');
       return;
     }
 
     try {
       setSubmitting(true);
       if (editingGroup) {
-        await updateVisitorGroup(editingGroup.id, {
-          name: cleanName,
-          members: cleanMembers
-        });
+        await updateVisitorGroup(editingGroup.id, { name: cleanName, members: cleanMembers });
       } else {
         await createVisitorGroup({ name: cleanName, members: cleanMembers });
       }
@@ -407,7 +501,7 @@ export function VisitorScreen() {
       Alert.alert(
         editingGroup ? 'Grupo atualizado' : 'Grupo criado',
         editingGroup
-          ? 'As alteracoes foram salvas.'
+          ? 'As alterações foram salvas.'
           : 'O grupo de visitantes foi criado com sucesso.'
       );
     } catch (error) {
@@ -420,7 +514,7 @@ export function VisitorScreen() {
   async function handleDeleteGroup(group: VisitorGroup) {
     Alert.alert(
       'Remover grupo',
-      `Deseja remover o grupo "${group.name}"? Visitas ja criadas a partir dele nao serao apagadas.`,
+      `Deseja remover o grupo "${group.name}"? Visitas já criadas a partir dele não serão apagadas.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -462,17 +556,21 @@ export function VisitorScreen() {
     setScheduleSheetOpen(true);
   }
 
-  function openGroupActions(group: VisitorGroup) {
-    Alert.alert(group.name, undefined, [
-      { text: 'Agendar visita', onPress: () => openScheduleSheet(group) },
-      { text: 'Editar grupo', onPress: () => openEditGroup(group) },
-      {
-        text: 'Remover grupo',
-        style: 'destructive',
-        onPress: () => handleDeleteGroup(group)
-      },
-      { text: 'Cancelar', style: 'cancel' }
-    ]);
+  function toggleGroupExpansion(groupId: number) {
+    setExpandedGroupId((prev) => (prev === groupId ? null : groupId));
+  }
+
+  function openGroupDetails(group: VisitorGroup) {
+    setDetailGroup(group);
+  }
+
+  function closeGroupDetails() {
+    setDetailGroup(null);
+  }
+
+  function pickGroupForReservation(group: VisitorGroup) {
+    setGroupPickerOpen(false);
+    openScheduleSheet(group);
   }
 
   async function submitSchedule() {
@@ -482,10 +580,10 @@ export function VisitorScreen() {
       : combineBrDateTime(scheduleDate, scheduleTime);
     if (!scheduled) {
       Alert.alert(
-        'Data invalida',
+        'Data inválida',
         scheduleAllDay
-          ? 'Informe uma data valida (DD-MM-AAAA).'
-          : 'Informe data e horario validos (DD-MM-AAAA e HH-MM).'
+          ? 'Informe uma data válida (DD-MM-AAAA).'
+          : 'Informe data e horário válidos (DD-MM-AAAA e HH-MM).'
       );
       return;
     }
@@ -497,8 +595,8 @@ export function VisitorScreen() {
       );
       if (!checkout) {
         Alert.alert(
-          'Check-out invalido',
-          'Informe data e horario validos para o check-out (DD-MM-AAAA e HH-MM).'
+          'Check-out inválido',
+          'Informe data e horário válidos para o check-out (DD-MM-AAAA e HH-MM).'
         );
         return;
       }
@@ -506,7 +604,7 @@ export function VisitorScreen() {
 
     try {
       setSubmitting(true);
-      const created = await scheduleVisitorGroup(scheduleGroup.id, {
+      await scheduleVisitorGroup(scheduleGroup.id, {
         scheduled_date: scheduled,
         all_day: scheduleAllDay || undefined,
         checkout_date_time: checkout ?? undefined,
@@ -515,12 +613,7 @@ export function VisitorScreen() {
       setScheduleSheetOpen(false);
       resetScheduleSheet();
       await loadData();
-      Alert.alert(
-        'Visita agendada',
-        `${created.length} convite${created.length === 1 ? '' : 's'} enviado${
-          created.length === 1 ? '' : 's'
-        }.`
-      );
+      Alert.alert('Visita agendada', 'O grupo foi agendado com sucesso.');
     } catch (error) {
       Alert.alert('Falha ao agendar', extractErrorMessage(error));
     } finally {
@@ -528,8 +621,21 @@ export function VisitorScreen() {
     }
   }
 
-  const isVisitors = innerTab === 'visitors';
-  const showEmpty = isVisitors ? filteredVisitors.length === 0 : groupRows.length === 0;
+  const statusLabels: Record<StatusFilter, string> = {
+    all: 'Todos os status',
+    SCHEDULED: STATUS_META.SCHEDULED.label,
+    CHECKED_IN: STATUS_META.CHECKED_IN.label,
+    CHECKED_OUT: STATUS_META.CHECKED_OUT.label,
+    NO_SHOW: STATUS_META.NO_SHOW.label,
+    EXPIRED: STATUS_META.EXPIRED.label,
+    CANCELLED: STATUS_META.CANCELLED.label
+  };
+
+  const sectionTitle = isUpcoming ? 'Próximas visitas' : 'Histórico';
+  const sectionEmptyText = isUpcoming
+    ? 'Nenhuma visita agendada para os próximos dias.'
+    : 'Nenhum registro no histórico ainda.';
+  const groupsEmptyText = 'Nenhum grupo cadastrado ainda.';
 
   return (
     <AppScreen onRefresh={loadData} refreshing={refreshing}>
@@ -538,114 +644,156 @@ export function VisitorScreen() {
           <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
         </Pressable>
         <Text style={styles.headerTitle}>Visitantes</Text>
-        <View style={styles.headerSide} />
+        <Pressable
+          onPress={handleHeaderAdd}
+          style={styles.headerSide}
+          hitSlop={8}
+        >
+          <View style={styles.headerPlus}>
+            <Ionicons name="add" size={18} color={colors.primary} />
+          </View>
+        </Pressable>
       </View>
 
-      {isVisitors ? (
-        <View style={styles.outerTabs}>
-          {([
-            { key: 'upcoming', label: 'Proximos' },
-            { key: 'history', label: 'Historico' }
-          ] as const).map((t) => {
-            const isActive = outerTab === t.key;
-            return (
-              <Pressable
-                key={t.key}
-                style={styles.outerTab}
-                onPress={() => setOuterTab(t.key)}
+      <View style={styles.mainTabs}>
+        {MAIN_TABS.map((t) => {
+          const isActive = mainTab === t.key;
+          return (
+            <Pressable
+              key={t.key}
+              style={styles.mainTab}
+              onPress={() => setMainTab(t.key)}
+            >
+              <Text
+                style={[styles.mainTabLabel, isActive && styles.mainTabLabelActive]}
+                numberOfLines={1}
               >
-                <Text style={[styles.outerTabLabel, isActive && styles.outerTabLabelActive]}>
-                  {t.label}
-                </Text>
-                <View
-                  style={[styles.outerTabIndicator, isActive && styles.outerTabIndicatorActive]}
-                />
-              </Pressable>
-            );
-          })}
-        </View>
+                {t.label}
+              </Text>
+              <View
+                style={[
+                  styles.mainTabIndicator,
+                  isActive && styles.mainTabIndicatorActive
+                ]}
+              />
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {!isGroupsTab ? (
+        <Pressable
+          style={styles.statusFilter}
+          onPress={() => setStatusPickerOpen(true)}
+        >
+          <Ionicons name="filter-outline" size={16} color={colors.textPrimary} />
+          <Text style={styles.statusFilterLabel} numberOfLines={1}>
+            {statusLabels[statusFilter]}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color="#8D93A1" />
+        </Pressable>
       ) : null}
 
-      <View style={styles.segmented}>
-        <Pressable
-          style={[styles.segmentButton, isVisitors && styles.segmentButtonActive]}
-          onPress={() => setInnerTab('visitors')}
-        >
-          <Ionicons
-            name="person-outline"
-            size={16}
-            color={isVisitors ? colors.primary : '#8D93A1'}
-          />
-          <Text style={[styles.segmentText, isVisitors && styles.segmentTextActive]}>
-            Visitantes
+      {isGroupsTab ? (
+        <View style={styles.listGroup}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Grupos de visitantes</Text>
+            <View style={styles.sectionCountChip}>
+              <Text style={styles.sectionCountText}>{groupRows.length}</Text>
+            </View>
+          </View>
+          <Text style={styles.sectionSubtitle}>
+            Gerencie os grupos e os visitantes que pertencem a eles.
           </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.segmentButton, !isVisitors && styles.segmentButtonActive]}
-          onPress={() => setInnerTab('groups')}
-        >
-          <Ionicons
-            name="people-outline"
-            size={16}
-            color={!isVisitors ? colors.primary : '#8D93A1'}
-          />
-          <Text style={[styles.segmentText, !isVisitors && styles.segmentTextActive]}>
-            Grupos de visitantes
-          </Text>
-        </Pressable>
-      </View>
 
-      {showEmpty ? (
-        <View style={styles.emptyCard}>
-          <Ionicons
-            name={isVisitors ? 'person-outline' : 'people-outline'}
-            size={26}
-            color="#B6BAC3"
-          />
-          <Text style={styles.emptyText}>
-            {isVisitors
-              ? outerTab === 'upcoming'
-                ? 'Nenhum visitante agendado.'
-                : 'Nenhum registro no historico.'
-              : 'Nenhum grupo cadastrado ainda.'}
-          </Text>
+          {groupRows.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="people-outline" size={26} color="#B6BAC3" />
+              <Text style={styles.emptyText}>{groupsEmptyText}</Text>
+            </View>
+          ) : (
+            groupRows.map((row) => {
+              const group = groups.find((g) => g.id === row.id);
+              if (!group) return null;
+              return (
+                <GroupCard
+                  key={row.key}
+                  row={row}
+                  group={group}
+                  expanded={expandedGroupId === group.id}
+                  onToggle={() => toggleGroupExpansion(group.id)}
+                  onViewDetails={() => openGroupDetails(group)}
+                  onEdit={() => openEditGroup(group)}
+                  onDelete={() => handleDeleteGroup(group)}
+                />
+              );
+            })
+          )}
+
+          <View style={styles.infoCard}>
+            <View style={styles.infoIcon}>
+              <Ionicons
+                name="information-circle-outline"
+                size={18}
+                color={colors.primary}
+              />
+            </View>
+            <View style={styles.infoCopy}>
+              <Text style={styles.infoTitle}>Sobre os grupos de visitantes</Text>
+              <Text style={styles.infoText}>
+                Grupos facilitam o agendamento frequente de visitas. Você pode
+                adicionar, editar ou remover visitantes a qualquer momento.
+              </Text>
+            </View>
+          </View>
         </View>
-      ) : isVisitors ? (
-        filteredVisitors.map((row) => (
-          <VisitorCard
-            key={row.key}
-            row={row}
-            onLongPress={() => handleDeleteVisitor(row)}
-          />
-        ))
       ) : (
-        groupRows.map((row) => {
-          const group = groups.find((g) => g.id === row.id);
-          if (!group) return null;
-          return (
-            <GroupCard
-              key={row.key}
-              row={row}
-              onPress={() => openScheduleSheet(group)}
-              onLongPress={() => openGroupActions(group)}
-            />
-          );
-        })
+        <View style={styles.listGroup}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{sectionTitle}</Text>
+            <View style={styles.sectionCountChip}>
+              <Text style={styles.sectionCountText}>{visitorRows.length}</Text>
+            </View>
+          </View>
+
+          {visitorRows.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="person-outline" size={26} color="#B6BAC3" />
+              <Text style={styles.emptyText}>{sectionEmptyText}</Text>
+            </View>
+          ) : (
+            visitorRows.map((row) => (
+              <VisitorCard
+                key={row.key}
+                row={row}
+                onPress={() => openVisitorActions(row)}
+                onLongPress={() => handleDeleteVisitor(row)}
+              />
+            ))
+          )}
+        </View>
       )}
 
-      <View style={styles.actionsBlock}>
-        {isVisitors ? (
-          <Pressable style={styles.primaryAction} onPress={openComposer}>
-            <Ionicons name="add" size={18} color="#FFFFFF" />
-            <Text style={styles.primaryActionText}>Cadastrar visitante</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={styles.primaryAction} onPress={openCreateGroup}>
-            <Ionicons name="people" size={18} color="#FFFFFF" />
-            <Text style={styles.primaryActionText}>Cadastrar grupo de visitantes</Text>
-          </Pressable>
-        )}
-      </View>
+      <Pressable style={styles.primaryAction} onPress={openCreateActions}>
+        <Ionicons name="calendar-outline" size={18} color="#FFFFFF" />
+        <Text style={styles.primaryActionText}>Nova reserva de visitante ou grupo</Text>
+      </Pressable>
+
+      <PickerSheet
+        visible={statusPickerOpen}
+        title="Filtrar por status"
+        options={(Object.keys(statusLabels) as StatusFilter[]).map((k) => ({
+          key: k,
+          label: statusLabels[k],
+          dot: k === 'all' ? undefined : STATUS_META[k as VisitorStatus].dot
+        }))}
+        selectedKey={statusFilter}
+        onSelect={(k) => {
+          setStatusFilter(k as StatusFilter);
+          setStatusPickerOpen(false);
+        }}
+        onClose={() => setStatusPickerOpen(false)}
+      />
 
       {/* New visitor modal */}
       <Modal
@@ -696,7 +844,7 @@ export function VisitorScreen() {
                 <View style={styles.toggleCopy}>
                   <Text style={styles.toggleLabel}>Dia inteiro</Text>
                   <Text style={styles.toggleHelp}>
-                    A visita ficara liberada das 00:00 ate 23:59 do dia.
+                    A visita ficará liberada das 00:00 até 23:59 do dia.
                   </Text>
                 </View>
                 <Switch
@@ -720,7 +868,7 @@ export function VisitorScreen() {
                 {!visitorAllDay && (
                   <View style={styles.flex1}>
                     <FormField
-                      label="Horario (HH-MM)"
+                      label="Horário (HH-MM)"
                       value={visitorTime}
                       onChangeText={(v) => setVisitorTime(maskBrTime(v))}
                       placeholder="19-30"
@@ -731,7 +879,7 @@ export function VisitorScreen() {
                 )}
               </View>
               <FormField
-                label="Observacao (opcional)"
+                label="Observação (opcional)"
                 value={visitorDescription}
                 onChangeText={setVisitorDescription}
                 placeholder="Detalhes da visita"
@@ -814,10 +962,7 @@ export function VisitorScreen() {
                   <View style={styles.memberCardHeader}>
                     <Text style={styles.memberCardTitle}>Membro {index + 1}</Text>
                     {groupMembers.length > 1 && (
-                      <Pressable
-                        onPress={() => removeMemberRow(member.key)}
-                        hitSlop={6}
-                      >
+                      <Pressable onPress={() => removeMemberRow(member.key)} hitSlop={6}>
                         <Ionicons name="trash-outline" size={16} color="#CD3131" />
                       </Pressable>
                     )}
@@ -902,8 +1047,9 @@ export function VisitorScreen() {
             >
               {scheduleGroup ? (
                 <Text style={styles.scheduleInfo}>
-                  Sera criado 1 convite para cada um dos{' '}
-                  {scheduleGroup.members.length} membros do grupo.
+                  O grupo entra como 1 visita, com {scheduleGroup.members.length}{' '}
+                  {scheduleGroup.members.length === 1 ? 'membro' : 'membros'} usando o
+                  mesmo link de check-in.
                 </Text>
               ) : null}
 
@@ -911,7 +1057,7 @@ export function VisitorScreen() {
                 <View style={styles.toggleCopy}>
                   <Text style={styles.toggleLabel}>Dia inteiro</Text>
                   <Text style={styles.toggleHelp}>
-                    Libera o acesso das 00:00 ate 23:59 do dia.
+                    Libera o acesso das 00:00 até 23:59 do dia.
                   </Text>
                 </View>
                 <Switch
@@ -936,7 +1082,7 @@ export function VisitorScreen() {
                 {!scheduleAllDay && (
                   <View style={styles.flex1}>
                     <FormField
-                      label="Horario (HH-MM)"
+                      label="Horário (HH-MM)"
                       value={scheduleTime}
                       onChangeText={(v) => setScheduleTime(maskBrTime(v))}
                       placeholder="19-30"
@@ -973,10 +1119,10 @@ export function VisitorScreen() {
               )}
 
               <FormField
-                label="Observacao (opcional)"
+                label="Observação (opcional)"
                 value={scheduleDescription}
                 onChangeText={setScheduleDescription}
-                placeholder="Ex: Almoco de domingo"
+                placeholder="Ex: Almoço de domingo"
                 multiline
               />
             </ScrollView>
@@ -1002,7 +1148,210 @@ export function VisitorScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Group reservation picker */}
+      <Modal
+        visible={groupPickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGroupPickerOpen(false)}
+      >
+        <View style={styles.sheetWrapper}>
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={() => setGroupPickerOpen(false)}
+          />
+          <View style={styles.pickerSheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeaderRow}>
+              <Text style={styles.sheetTitle}>Escolha o grupo</Text>
+              <Pressable
+                onPress={() => setGroupPickerOpen(false)}
+                hitSlop={8}
+                style={styles.sheetClose}
+              >
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+            <Text style={styles.sectionSubtitle}>
+              Selecione um grupo cadastrado para agendar a visita.
+            </Text>
+            <ScrollView
+              style={{ maxHeight: 360 }}
+              contentContainerStyle={{ gap: 8, paddingVertical: 8 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {groups.map((g) => (
+                <Pressable
+                  key={g.id}
+                  style={styles.groupPickerOption}
+                  onPress={() => pickGroupForReservation(g)}
+                >
+                  <View style={styles.avatar}>
+                    <Ionicons name="people" size={18} color={colors.primary} />
+                  </View>
+                  <View style={styles.cardCopy}>
+                    <Text style={styles.cardTitle} numberOfLines={1}>
+                      {g.name}
+                    </Text>
+                    <Text style={styles.metaText} numberOfLines={1}>
+                      {g.members.length}{' '}
+                      {g.members.length === 1 ? 'pessoa' : 'pessoas'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#8D93A1" />
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Group details modal */}
+      <Modal
+        visible={detailGroup != null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeGroupDetails}
+      >
+        <View style={styles.sheetWrapper}>
+          <Pressable style={styles.sheetBackdrop} onPress={closeGroupDetails} />
+          <View style={[styles.sheet, styles.sheetTall]}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeaderRow}>
+              <Text style={styles.sheetTitle}>
+                {detailGroup?.name ?? 'Detalhes do grupo'}
+              </Text>
+              <Pressable
+                onPress={closeGroupDetails}
+                hitSlop={8}
+                style={styles.sheetClose}
+              >
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+            <ScrollView
+              style={styles.sheetBody}
+              contentContainerStyle={styles.sheetBodyContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {detailGroup ? (
+                <>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="people-outline" size={16} color="#8D93A1" />
+                    <Text style={styles.detailRowText}>
+                      {detailGroup.members.length}{' '}
+                      {detailGroup.members.length === 1 ? 'pessoa' : 'pessoas'}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="time-outline" size={16} color="#8D93A1" />
+                    <Text style={styles.detailRowText}>
+                      Criado em {formatDateOnly(detailGroup.created_at)}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="refresh-outline" size={16} color="#8D93A1" />
+                    <Text style={styles.detailRowText}>
+                      Atualizado em {formatDateOnly(detailGroup.updated_at)}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.groupMembersLabel, { marginTop: 4 }]}>
+                    Visitantes do grupo
+                  </Text>
+                  {detailGroup.members.length === 0 ? (
+                    <Text style={styles.groupMembersEmpty}>
+                      Nenhum visitante neste grupo.
+                    </Text>
+                  ) : (
+                    detailGroup.members.map((member) => (
+                      <View key={member.id} style={styles.memberRow}>
+                        <View style={styles.memberAvatar}>
+                          <Text style={styles.memberAvatarText}>
+                            {getInitials(member.name)}
+                          </Text>
+                        </View>
+                        <View style={styles.memberCopy}>
+                          <Text style={styles.memberName} numberOfLines={1}>
+                            {member.name}
+                          </Text>
+                          {member.email ? (
+                            <Text style={styles.memberEmail} numberOfLines={1}>
+                              {member.email}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </AppScreen>
+  );
+}
+
+type PickerOption = { key: string; label: string; dot?: string };
+
+type PickerSheetProps = {
+  visible: boolean;
+  title: string;
+  options: PickerOption[];
+  selectedKey: string;
+  onSelect: (key: string) => void;
+  onClose: () => void;
+};
+
+function PickerSheet({
+  visible,
+  title,
+  options,
+  selectedKey,
+  onSelect,
+  onClose
+}: PickerSheetProps) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.sheetWrapper}>
+        <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+        <View style={styles.pickerSheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>{title}</Text>
+          <View style={{ height: 8 }} />
+          {options.map((opt) => {
+            const isSelected = opt.key === selectedKey;
+            return (
+              <Pressable
+                key={opt.key}
+                style={[styles.pickerOption, isSelected && styles.pickerOptionActive]}
+                onPress={() => onSelect(opt.key)}
+              >
+                {opt.dot ? (
+                  <View style={[styles.legendDot, { backgroundColor: opt.dot }]} />
+                ) : (
+                  <View style={styles.pickerDotPlaceholder} />
+                )}
+                <Text
+                  style={[
+                    styles.pickerOptionLabel,
+                    isSelected && styles.pickerOptionLabelActive
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+                {isSelected ? (
+                  <Ionicons name="checkmark" size={18} color={colors.primary} />
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1044,90 +1393,157 @@ function FormField({
 
 function VisitorCard({
   row,
-  onLongPress
-}: {
-  row: VisitorRow;
-  onLongPress: () => void;
-}) {
-  const tone = pickAvatarTone(row.name);
-  const statusStyle = STATUS_STYLES[row.status];
-  return (
-    <Pressable style={styles.card} onLongPress={onLongPress} delayLongPress={250}>
-      <View style={[styles.avatar, { backgroundColor: tone.bg }]}>
-        <Text style={[styles.avatarText, { color: tone.color }]}>
-          {getInitials(row.name)}
-        </Text>
-      </View>
-      <View style={styles.cardCopy}>
-        <View style={styles.titleRow}>
-          <Text style={styles.cardTitle} numberOfLines={1}>
-            {row.name}
-          </Text>
-          {row.allDay && (
-            <View style={styles.allDayBadge}>
-              <Text style={styles.allDayBadgeText}>Dia inteiro</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.metaRow}>
-          <Ionicons name="calendar-outline" size={13} color="#8D93A1" />
-          <Text style={styles.metaText}>
-            {row.allDay ? formatDateOnly(row.scheduledAt) : formatScheduled(row.scheduledAt)}
-          </Text>
-        </View>
-        <View style={styles.metaRow}>
-          <Ionicons name="business-outline" size={13} color="#8D93A1" />
-          <Text style={styles.metaText}>{row.apartment}</Text>
-        </View>
-      </View>
-      <View style={[styles.statusChip, { backgroundColor: statusStyle.bg }]}>
-        <Text style={[styles.statusText, { color: statusStyle.color }]}>
-          {statusStyle.label}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function GroupCard({
-  row,
   onPress,
   onLongPress
 }: {
-  row: GroupRow;
+  row: VisitorRow;
   onPress: () => void;
   onLongPress: () => void;
 }) {
-  const tone = pickAvatarTone(row.name);
+  const meta = STATUS_META[row.status];
+  const dateLabel = formatRelativeDateTime(row.scheduledAt, row.allDay);
+  const hostLabel = row.hostName ? `Morador: ${row.hostName}` : 'Morador: -';
+
   return (
     <Pressable
       style={styles.card}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={250}
+      delayLongPress={300}
     >
-      <View style={[styles.avatar, { backgroundColor: tone.bg }]}>
-        <Ionicons name="people" size={20} color={tone.color} />
+      <View style={styles.avatar}>
+        {row.isGroup ? (
+          <Ionicons name="people" size={20} color={colors.primaryDark} />
+        ) : (
+          <Text style={styles.avatarText}>{getInitials(row.name)}</Text>
+        )}
       </View>
       <View style={styles.cardCopy}>
-        <Text style={styles.cardTitle}>{row.name}</Text>
+        <Text style={styles.cardTitle} numberOfLines={1}>
+          {row.name}
+        </Text>
         <View style={styles.metaRow}>
-          <Ionicons name="people-outline" size={13} color="#8D93A1" />
-          <Text style={styles.metaText}>
-            {row.count} {row.count === 1 ? 'pessoa' : 'pessoas'}
+          <Ionicons name="calendar-outline" size={13} color="#8D93A1" />
+          <Text style={styles.metaText} numberOfLines={1}>
+            {dateLabel}
           </Text>
         </View>
         <View style={styles.metaRow}>
-          <Ionicons name="time-outline" size={13} color="#8D93A1" />
-          <Text style={styles.metaText}>
-            Atualizado em {formatDateOnly(row.updatedAt)}
+          <Ionicons name="person-outline" size={13} color="#8D93A1" />
+          <Text style={styles.metaText} numberOfLines={1}>
+            {hostLabel}
           </Text>
         </View>
       </View>
-      <View style={styles.groupActionHint}>
-        <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+      <View style={styles.cardSide}>
+        <View style={[styles.statusChip, { backgroundColor: meta.chipBg }]}>
+          <Text style={[styles.statusText, { color: meta.chipColor }]}>
+            {meta.label}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color="#8D93A1" />
       </View>
     </Pressable>
+  );
+}
+
+type GroupCardProps = {
+  row: GroupRow;
+  group: VisitorGroup;
+  expanded: boolean;
+  onToggle: () => void;
+  onViewDetails: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+};
+
+function GroupCard({
+  row,
+  group,
+  expanded,
+  onToggle,
+  onViewDetails,
+  onEdit,
+  onDelete
+}: GroupCardProps) {
+  return (
+    <View style={styles.groupCard}>
+      <Pressable style={styles.groupCardHead} onPress={onToggle}>
+        <View style={styles.avatar}>
+          <Ionicons name="people" size={20} color={colors.primary} />
+        </View>
+        <View style={styles.cardCopy}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {row.name}
+          </Text>
+          <View style={styles.metaRow}>
+            <Ionicons name="people-outline" size={13} color="#8D93A1" />
+            <Text style={styles.metaText}>
+              {row.count} {row.count === 1 ? 'pessoa' : 'pessoas'}
+            </Text>
+          </View>
+          <View style={styles.metaRow}>
+            <Ionicons name="time-outline" size={13} color="#8D93A1" />
+            <Text style={styles.metaText}>
+              Atualizado em {formatDateOnly(row.updatedAt)}
+            </Text>
+          </View>
+        </View>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={18}
+          color="#8D93A1"
+        />
+      </Pressable>
+
+      {expanded ? (
+        <View style={styles.groupCardBody}>
+          <View style={styles.groupCardActions}>
+            <Pressable style={styles.groupAction} onPress={onViewDetails}>
+              <Ionicons name="eye-outline" size={16} color={colors.primary} />
+              <Text style={styles.groupActionText}>Ver detalhes</Text>
+            </Pressable>
+            <View style={styles.groupActionDivider} />
+            <Pressable style={styles.groupAction} onPress={onEdit}>
+              <Ionicons name="pencil-outline" size={16} color={colors.primary} />
+              <Text style={styles.groupActionText}>Editar</Text>
+            </Pressable>
+            <View style={styles.groupActionDivider} />
+            <Pressable style={styles.groupAction} onPress={onDelete}>
+              <Ionicons name="trash-outline" size={16} color="#CD3131" />
+              <Text style={[styles.groupActionText, styles.groupActionTextDanger]}>
+                Excluir
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.groupMembersLabel}>Visitantes do grupo</Text>
+          {group.members.length === 0 ? (
+            <Text style={styles.groupMembersEmpty}>Nenhum visitante neste grupo.</Text>
+          ) : (
+            group.members.map((member) => (
+              <View key={member.id} style={styles.memberRow}>
+                <View style={styles.memberAvatar}>
+                  <Text style={styles.memberAvatarText}>
+                    {getInitials(member.name)}
+                  </Text>
+                </View>
+                <View style={styles.memberCopy}>
+                  <Text style={styles.memberName} numberOfLines={1}>
+                    {member.name}
+                  </Text>
+                  {member.email ? (
+                    <Text style={styles.memberEmail} numberOfLines={1}>
+                      {member.email}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -1149,67 +1565,89 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800'
   },
-  outerTabs: {
+  headerPlus: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  mainTabs: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#EEF1EF',
-    marginTop: 4
+    borderBottomColor: '#EEF1EF'
   },
-  outerTab: {
+  mainTab: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 8
   },
-  outerTabLabel: {
-    fontSize: 14,
+  mainTabLabel: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#9AA0AE',
-    paddingBottom: 8
+    paddingBottom: 8,
+    textAlign: 'center'
   },
-  outerTabLabelActive: {
+  mainTabLabelActive: {
     color: colors.primary,
     fontWeight: '800'
   },
-  outerTabIndicator: {
-    height: 2,
-    width: 60,
-    borderRadius: 1,
+  mainTabIndicator: {
+    height: 3,
+    alignSelf: 'stretch',
+    borderRadius: 2,
     backgroundColor: 'transparent'
   },
-  outerTabIndicatorActive: {
+  mainTabIndicatorActive: {
     backgroundColor: colors.primary
   },
-  segmented: {
-    flexDirection: 'row',
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    padding: 4,
-    shadowColor: '#132016',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3
-  },
-  segmentButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 12,
+  statusFilter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E4E8E6'
   },
-  segmentButtonActive: {
-    backgroundColor: '#F4F8F4'
+  statusFilterLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary
   },
-  segmentText: {
-    color: '#7C8392',
-    fontSize: 13,
-    fontWeight: '600'
+  listGroup: {
+    gap: 10
   },
-  segmentTextActive: {
-    color: colors.primary,
-    fontWeight: '700'
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 2
+  },
+  sectionTitle: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '800'
+  },
+  sectionCountChip: {
+    minWidth: 24,
+    height: 22,
+    paddingHorizontal: 8,
+    borderRadius: 11,
+    backgroundColor: '#E8F6EC',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sectionCountText: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '800'
   },
   emptyCard: {
     alignItems: 'center',
@@ -1220,7 +1658,9 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: colors.textMuted,
-    fontSize: 13
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 16
   },
   card: {
     flexDirection: 'row',
@@ -1236,41 +1676,27 @@ const styles = StyleSheet.create({
     elevation: 3
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#D9ECDF',
     alignItems: 'center',
     justifyContent: 'center'
   },
   avatarText: {
     fontWeight: '800',
-    fontSize: 14
+    fontSize: 13,
+    color: colors.primaryDark
   },
   cardCopy: {
     flex: 1,
     gap: 3
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
   },
   cardTitle: {
     color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '800',
     flexShrink: 1
-  },
-  allDayBadge: {
-    backgroundColor: '#FFF1D6',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8
-  },
-  allDayBadgeText: {
-    color: '#B07A1A',
-    fontSize: 10,
-    fontWeight: '700'
   },
   metaRow: {
     flexDirection: 'row',
@@ -1279,17 +1705,26 @@ const styles = StyleSheet.create({
   },
   metaText: {
     color: colors.textMuted,
-    fontSize: 12
+    fontSize: 12,
+    flexShrink: 1
+  },
+  cardSide: {
+    alignItems: 'flex-end',
+    gap: 8
   },
   statusChip: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-    alignSelf: 'center'
+    paddingVertical: 4,
+    borderRadius: 10
   },
   statusText: {
     fontSize: 11,
     fontWeight: '700'
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4
   },
   groupActionHint: {
     width: 36,
@@ -1299,9 +1734,154 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
-  actionsBlock: {
+  sectionSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    paddingHorizontal: 2,
+    marginBottom: 4
+  },
+  groupCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    shadowColor: '#132016',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+    overflow: 'hidden'
+  },
+  groupCardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14
+  },
+  groupCardBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    gap: 10
+  },
+  groupCardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F7F9F7',
+    borderRadius: 12,
+    paddingVertical: 6
+  },
+  groupAction: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8
+  },
+  groupActionText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  groupActionTextDanger: {
+    color: '#CD3131'
+  },
+  groupActionDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: '#E4E8E6',
+    marginVertical: 4
+  },
+  groupMembersLabel: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 2
+  },
+  groupMembersEmpty: {
+    color: colors.textMuted,
+    fontSize: 12
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F2F0'
+  },
+  memberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E5F1EA',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  memberAvatarText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primaryDark
+  },
+  memberCopy: {
+    flex: 1,
+    gap: 2
+  },
+  memberName: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  memberEmail: {
+    color: colors.textMuted,
+    fontSize: 11
+  },
+  infoCard: {
+    flexDirection: 'row',
     gap: 10,
-    marginTop: 16
+    backgroundColor: '#F4F8F4',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 4
+  },
+  infoIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#E1EFE3',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  infoCopy: {
+    flex: 1,
+    gap: 4
+  },
+  infoTitle: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  infoText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16
+  },
+  groupPickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#F7F9F7',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  detailRowText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600'
   },
   primaryAction: {
     flexDirection: 'row',
@@ -1315,7 +1895,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.22,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 5
+    elevation: 5,
+    marginTop: 4
   },
   primaryActionText: {
     color: '#FFFFFF',
@@ -1342,6 +1923,40 @@ const styles = StyleSheet.create({
   },
   sheetTall: {
     maxHeight: '88%'
+  },
+  pickerSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+    gap: 4
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12
+  },
+  pickerOptionActive: {
+    backgroundColor: '#F4F8F4'
+  },
+  pickerOptionLabel: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  pickerOptionLabelActive: {
+    color: colors.primary,
+    fontWeight: '800'
+  },
+  pickerDotPlaceholder: {
+    width: 8,
+    height: 8
   },
   sheetHandle: {
     alignSelf: 'center',

@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AppScreen } from '../components/AppScreen';
 import { listNews } from '../api/news';
 import { listCondoPayments } from '../api/payments';
-import { listVisitors } from '../api/visitors';
+import { listVisitorGroupVisits, listVisitors } from '../api/visitors';
 import { listServiceRequests } from '../api/serviceRequests';
 import { formatDateTime } from '../utils/date';
 import { colors } from '../theme/colors';
@@ -129,16 +129,17 @@ function ResidentHomeScreen() {
   const loadData = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [news, visitors, requests, payments] = await Promise.all([
+      const [news, soloVisitors, groupVisits, requests, payments] = await Promise.all([
         listNews(),
-        listVisitors(),
+        listVisitors({ period: 'future' }).catch(() => []),
+        listVisitorGroupVisits({ period: 'future' }).catch(() => []),
         listServiceRequests(),
         listCondoPayments()
       ]);
 
-      const firstVisitor = [...visitors]
+      const firstVisitor = [...soloVisitors, ...groupVisits]
         .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
-        .find((v) => v.status !== 'Checked-out');
+        .find((v) => v.status !== 'Checked-out' && v.status !== 'CHECKED_OUT');
 
       setDashboard({
         latestNewsTitle: news[0]?.title || 'Nenhum comunicado recente',
